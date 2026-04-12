@@ -54,15 +54,15 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   4. Add indexes: `HNSW` index on `memory_records.embedding` with `vector_cosine_ops`, and the indexes on `runs`, `gate_events`, `audit_events` from `docs/SDD.md` section 15.1
   Verify: migration applies with zero errors. Commit the generated migration file.
 
-- [ ] **W1-08** — Configure Pino as the NestJS logger adapter in `apps/api/src/main.ts`. Every log line must include `service: finch-api`. Log level read from `LOG_LEVEL` environment variable, defaulting to `info`.
+- [x] **W1-08** — Configure Pino as the NestJS logger adapter in `apps/api/src/main.ts`. Every log line must include `service: finch-api`. Log level read from `LOG_LEVEL` environment variable, defaulting to `info`.
 
-- [ ] **W1-09** — Add `GET /health` endpoint in `ApiModule`. Returns `{ status: "ok", service: "finch-api", timestamp: <ISO string> }`. Verify: `curl http://localhost:3001/health` returns HTTP 200 with that body.
+- [x] **W1-09** — Add `GET /health` endpoint in `ApiModule`. Returns `{ status: "ok", service: "finch-api", timestamp: <ISO string> }`. Verify: `curl http://localhost:3001/health` returns HTTP 200 with that body.
 
-- [ ] **W1-10** — Scaffold `apps/web` as a React 18 + Vite application with strict TypeScript. Install TanStack Router, TanStack Query, Radix UI. Single placeholder route at `/` rendering `<h1>Finch</h1>`. Verify: `pnpm --filter web dev` starts on port 3000 and the page loads.
+- [x] **W1-10** — Scaffold `apps/web` as a React 18 + Vite application with strict TypeScript. Install TanStack Router, TanStack Query, Radix UI. Single placeholder route at `/` rendering `<h1>Finch</h1>`. Verify: `pnpm --filter web dev` starts on port 3000 and the page loads.
 
-- [ ] **W1-11** — Write a root `README.md` covering: what Finch is (2–3 sentences), prerequisites, how to start the stack, how to run the API, how to run the frontend, links to `AGENTS.md` and `docs/SDD.md`. Also create `skills/README.md` with the content describing the two skill files, when to read them, and the dual purpose (implementing agent guidance + runtime skill source material).
+- [x] **W1-11** — Write a root `README.md` covering: what Finch is (2–3 sentences), prerequisites, how to start the stack, how to run the API, how to run the frontend, links to `AGENTS.md` and `docs/SDD.md`. Also create `skills/README.md` with the content describing the two skill files, when to read them, and the dual purpose (implementing agent guidance + runtime skill source material).
 
-- [ ] **W1-12** — Configure GitHub Actions CI at `.github/workflows/ci.yml`. Five jobs, all triggered on every push and PR:
+- [x] **W1-12** — Configure GitHub Actions CI at `.github/workflows/ci.yml`. Five jobs, all triggered on every push and PR:
   1. **install** — `pnpm install`
   2. **typecheck-api** — `pnpm --filter api exec tsc --noEmit`
   3. **typecheck-web** — `pnpm --filter web exec tsc --noEmit`
