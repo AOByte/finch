@@ -1,10 +1,14 @@
 import { Module } from '@nestjs/common';
 import { WorkflowClient, Connection } from '@temporalio/client';
 import { PersistenceModule } from '../persistence/persistence.module';
+import { AuditModule } from '../audit/audit.module';
+import { OrchestratorModule } from '../orchestrator/orchestrator.module';
+import { MemoryModule } from '../memory/memory.module';
+import { AgentModule } from '../agents/agent.module';
 import { TemporalWorkerService } from './temporal-worker.service';
 
 @Module({
-  imports: [PersistenceModule],
+  imports: [PersistenceModule, AuditModule, OrchestratorModule, MemoryModule, AgentModule],
   providers: [
     TemporalWorkerService,
     {

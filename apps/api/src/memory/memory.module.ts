@@ -1,11 +1,8 @@
 import { Module } from '@nestjs/common';
-import { LLMModule } from '../llm/llm.module';
-import { PersistenceModule } from '../persistence/persistence.module';
-import { AuditModule } from '../audit/audit.module';
+import { MemoryConnectorService } from './memory-connector.service';
 
 @Module({
-  imports: [LLMModule, PersistenceModule, AuditModule],
-  providers: [],
-  exports: [],
+  providers: [MemoryConnectorService],
+  exports: [MemoryConnectorService],
 })
 export class MemoryModule {}
