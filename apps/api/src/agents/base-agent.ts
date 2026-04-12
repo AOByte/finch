@@ -5,8 +5,10 @@ import type {
   Tool,
   Message,
   AuditEventData,
+  MCPTool,
 } from '@finch/types';
 import { GateEvent } from './gate-event';
+import type { MCPRegistryService } from '../mcp/mcp-registry.service';
 
 export interface AgentLoopParams {
   llm: LLMConnector;
@@ -17,6 +19,12 @@ export interface AgentLoopParams {
 }
 
 export abstract class BaseAgent<TInput, TOutput> {
+  protected mcpRegistry: MCPRegistryService | null = null;
+
+  setMCPRegistry(registry: MCPRegistryService): void {
+    this.mcpRegistry = registry;
+  }
+
   protected abstract auditLog(event: AuditEventData): Promise<void>;
 
   abstract buildLockedPreamble(): string;
@@ -43,9 +51,32 @@ export abstract class BaseAgent<TInput, TOutput> {
       .join('\n\n---\n\n');
 
     const initialMessage = this.buildInitialMessage(input);
-    const tools = this.buildToolSet(context);
+    const agentTools = this.buildToolSet(context);
+
+    // W5A-05: Inject MCP tools, phase-filtered (read tools in all phases, write tools in EXECUTE/SHIP only)
+    const mcpToolDefs: Tool[] = this.getMCPTools(context);
+    const tools = [...agentTools, ...mcpToolDefs];
 
     return this.runAgentLoop({ llm: this.getLLM(), systemPrompt, initialMessage, tools, context });
+  }
+
+  /**
+   * Discover MCP tools for this harness + phase.
+   * Write tools are filtered out in TRIGGER, ACQUIRE, and PLAN phases (FC-04).
+   */
+  private getMCPTools(context: AgentContext): Tool[] {
+    if (!this.mcpRegistry) return [];
+
+    const mcpTools: MCPTool[] = this.mcpRegistry.listToolsForHarness(
+      context.harnessId,
+      context.phase,
+    );
+
+    return mcpTools.map(t => ({
+      name: t.name,
+      description: t.description,
+      inputSchema: t.inputSchema,
+    }));
   }
 
   protected abstract getLLM(): LLMConnector;
@@ -159,6 +190,58 @@ export abstract class BaseAgent<TInput, TOutput> {
             });
           }
 
+          // W5A-06: Route namespaced MCP tool calls via MCPRegistryService
+          if (toolUse.name.includes('.') && this.mcpRegistry) {
+            const startMs = Date.now();
+            let mcpResult: unknown;
+            let mcpSuccess = true;
+            let mcpError: string | undefined;
+
+            try {
+              mcpResult = await this.mcpRegistry.executeTool(
+                params.context.harnessId,
+                toolUse.name,
+                toolUse.input,
+                params.context.phase,
+              );
+            } catch (err) {
+              mcpSuccess = false;
+              mcpError = err instanceof Error ? err.message : String(err);
+              mcpResult = { error: mcpError };
+            }
+
+            const durationMs = Date.now() - startMs;
+            const permission = this.mcpRegistry.getToolPermission(
+              params.context.harnessId,
+              toolUse.name,
+            ) ?? 'read';
+
+            await this.auditLog({
+              runId: params.context.runId,
+              harnessId: params.context.harnessId,
+              phase: params.context.phase,
+              eventType: 'mcp_tool_call',
+              actor: {
+                agentId: params.context.agentConfig.agentId,
+                model: params.context.agentConfig.model,
+              },
+              payload: {
+                mcpServer: toolUse.name.split('.')[0],
+                toolName: toolUse.name,
+                permission,
+                input: toolUse.input,
+                result: mcpResult as Record<string, unknown>,
+                durationMs,
+                success: mcpSuccess,
+                error: mcpError,
+              },
+            });
+
+            messages.push({
+              role: 'user',
+              content: [{ type: 'tool_result', toolUseId: toolUse.id, content: JSON.stringify(mcpResult) }],
+            });
+          } else {
           const result = await this.executeToolCall(
             toolUse.name,
             toolUse.input,
@@ -178,6 +261,7 @@ export abstract class BaseAgent<TInput, TOutput> {
             role: 'user',
             content: [{ type: 'tool_result', toolUseId: toolUse.id, content: JSON.stringify(result) }],
           });
+          }
         }
       }
     }

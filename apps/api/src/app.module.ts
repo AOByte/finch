@@ -13,6 +13,8 @@ import { PersistenceModule } from './persistence/persistence.module';
 import { WebSocketModule } from './websocket/websocket.module';
 import { AuthModule } from './auth/auth.module';
 import { ApiModule } from './api/api.module';
+import { MCPModule } from './mcp/mcp.module';
+import { ConnectorSettingsModule } from './connector-settings/connector-settings.module';
 
 @Module({
   imports: [
@@ -48,6 +50,8 @@ import { ApiModule } from './api/api.module';
     WebSocketModule,
     AuthModule,
     ApiModule,
+    MCPModule,
+    ConnectorSettingsModule,
   ],
 })
 export class AppModule {}

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BaseAgent } from '../../src/agents/base-agent';
 import { GateEvent } from '../../src/agents/gate-event';
-import type { LLMConnector, LLMResponse, AgentContext, Tool, AuditEventData } from '@finch/types';
+import { MCPRegistryService } from '../../src/mcp/mcp-registry.service';
+import type { LLMConnector, LLMResponse, AgentContext, Tool, AuditEventData, MCPServer, MCPTool } from '@finch/types';
 
 class TestAgent extends BaseAgent<string, string> {
   public mockLLM: LLMConnector;
@@ -445,5 +446,148 @@ describe('BaseAgent', () => {
         m.content.some((c: { type: string }) => c.type === 'tool_result'),
     );
     expect(toolResultMsg).toBeDefined();
+  });
+
+  // --- MCP tool integration tests ---
+
+  it('setMCPRegistry sets the registry and getMCPTools returns tools', async () => {
+    const registry = new MCPRegistryService();
+    const mockServer: MCPServer = {
+      serverId: 'jira',
+      displayName: 'Jira',
+      listTools: () => [
+        { name: 'jira.getIssue', description: 'Get issue', inputSchema: { type: 'object' }, permission: 'read' as const },
+        { name: 'jira.addComment', description: 'Add comment', inputSchema: { type: 'object' }, permission: 'write' as const },
+      ],
+      executeTool: vi.fn().mockResolvedValue({ key: 'MC-208' }),
+      healthCheck: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    registry.registerServer('h1', mockServer);
+    agent.setMCPRegistry(registry);
+
+    // First call: MCP tool use → routes via registry
+    mockLLM.complete.mockResolvedValueOnce({
+      text: '',
+      content: [],
+      toolUses: [{ id: 'mcp-1', name: 'jira.getIssue', input: { issueKey: 'MC-208' } }],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'tool_use',
+    });
+    // Second call: end_turn
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'done with mcp',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = makeContext();
+    ctx.phase = 'ACQUIRE';
+    const result = await agent.run('test', ctx);
+    expect(result).toBe('done with mcp');
+
+    // Verify MCP tools were injected into the LLM call
+    const firstCallTools = mockLLM.complete.mock.calls[0][0].tools;
+    expect(firstCallTools.find((t: Tool) => t.name === 'jira.getIssue')).toBeDefined();
+
+    // Verify mcp_tool_call audit event
+    const mcpLogs = agent.auditLogs.filter(l => l.eventType === 'mcp_tool_call');
+    expect(mcpLogs).toHaveLength(1);
+    expect((mcpLogs[0].payload as Record<string, unknown>).toolName).toBe('jira.getIssue');
+    expect((mcpLogs[0].payload as Record<string, unknown>).success).toBe(true);
+    expect((mcpLogs[0].payload as Record<string, unknown>).permission).toBe('read');
+    expect((mcpLogs[0].payload as Record<string, unknown>).mcpServer).toBe('jira');
+  });
+
+  it('MCP tool call error is caught and logged', async () => {
+    const registry = new MCPRegistryService();
+    const mockServer: MCPServer = {
+      serverId: 'jira',
+      displayName: 'Jira',
+      listTools: () => [
+        { name: 'jira.getIssue', description: 'Get issue', inputSchema: { type: 'object' }, permission: 'read' as const },
+      ],
+      executeTool: vi.fn().mockRejectedValue(new Error('Network error')),
+      healthCheck: vi.fn().mockResolvedValue({ ok: true }),
+    };
+    registry.registerServer('h1', mockServer);
+    agent.setMCPRegistry(registry);
+
+    mockLLM.complete.mockResolvedValueOnce({
+      text: '',
+      content: [],
+      toolUses: [{ id: 'mcp-1', name: 'jira.getIssue', input: { issueKey: 'MC-208' } }],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'tool_use',
+    });
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'recovered',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = makeContext();
+    ctx.phase = 'EXECUTE';
+    const result = await agent.run('test', ctx);
+    expect(result).toBe('recovered');
+
+    const mcpLogs = agent.auditLogs.filter(l => l.eventType === 'mcp_tool_call');
+    expect(mcpLogs).toHaveLength(1);
+    expect((mcpLogs[0].payload as Record<string, unknown>).success).toBe(false);
+    expect((mcpLogs[0].payload as Record<string, unknown>).error).toBe('Network error');
+  });
+
+  it('MCP write tools are filtered out in PLAN phase (FC-04 via getMCPTools)', async () => {
+    const registry = new MCPRegistryService();
+    const mockServer: MCPServer = {
+      serverId: 'jira',
+      displayName: 'Jira',
+      listTools: () => [
+        { name: 'jira.getIssue', description: 'Get issue', inputSchema: { type: 'object' }, permission: 'read' as const },
+        { name: 'jira.addComment', description: 'Add comment', inputSchema: { type: 'object' }, permission: 'write' as const },
+      ],
+      executeTool: vi.fn(),
+      healthCheck: vi.fn(),
+    };
+    registry.registerServer('h1', mockServer);
+    agent.setMCPRegistry(registry);
+
+    mockLLM.complete.mockResolvedValue({
+      text: 'planned',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = makeContext();
+    ctx.phase = 'PLAN';
+    await agent.run('test', ctx);
+
+    // In PLAN phase, only read tools should be injected
+    const tools = mockLLM.complete.mock.calls[0][0].tools;
+    expect(tools.find((t: Tool) => t.name === 'jira.getIssue')).toBeDefined();
+    expect(tools.find((t: Tool) => t.name === 'jira.addComment')).toBeUndefined();
+  });
+
+  it('without MCPRegistry set, no MCP tools are injected', async () => {
+    // agent has no MCPRegistry set (default)
+    mockLLM.complete.mockResolvedValue({
+      text: 'no mcp',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    await agent.run('test', makeContext());
+
+    // Only the 2 agent-defined tools (fire_gate, custom_tool)
+    const tools = mockLLM.complete.mock.calls[0][0].tools;
+    expect(tools).toHaveLength(2);
+    expect(tools.find((t: Tool) => t.name.includes('.'))).toBeUndefined();
   });
 });

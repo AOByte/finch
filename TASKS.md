@@ -270,7 +270,45 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 ---
 
-## Wave 5 — Multi-repo Support + Memory System
+## Wave 5A — MCP Core Infrastructure
+
+**Goal:** agents discover and call external tools (Jira, GitHub, Slack) via the Model Context Protocol. Read tools available in all phases; write tools restricted to EXECUTE/SHIP per FC-04. Existing Wave 4 connectors wrapped as MCP servers (thin adapters, no rewrite). `ConnectorRegistryService` preserved alongside `MCPRegistryService` for gate delivery.
+
+- [x] **W5A-01** — Define `MCPServer`, `MCPTool`, `MCPToolPermission` interfaces in `@finch/types`. `MCPToolPermission` is `'read' | 'write'`. `MCPTool` has `name`, `description`, `inputSchema`, `permission`. `MCPServer` has `serverId`, `displayName`, `listTools()`, `executeTool(name, args)`, `healthCheck()`.
+
+- [x] **W5A-02** — Add `mcp_servers` Prisma model: `id`, `harness_id FK`, `server_type` (jira/github/slack), `display_name`, `config_encrypted TEXT`, `is_active BOOL`, `created_at`, `updated_at`. Run migration.
+
+- [x] **W5A-03** — Implement `MCPRegistryService` in `MCPModule`. Scoped per harness. Methods: `registerServer(harnessId, server)`, `listToolsForHarness(harnessId, phase)` (returns phase-filtered tools — read in all phases, write only in EXECUTE/SHIP), `executeTool(harnessId, toolName, args)`, `getToolPermission(toolName)`.
+
+- [x] **W5A-04** — Implement `MCPServerFactory` in `MCPModule`. Creates `MCPServer` instances from `mcp_servers` DB rows. Decrypts `config_encrypted` via `CredentialEncryptionService`. Returns typed server for jira/github/slack.
+
+- [x] **W5A-05** — Implement `JiraMCPServer` wrapping `JiraConnectorService`. 6 tools: 4 read (`jira.getIssue`, `jira.searchIssues`, `jira.getComments`, `jira.getLinkedIssues`), 2 write (`jira.addComment`, `jira.transitionIssue`).
+
+- [x] **W5A-06** — Implement `GitHubMCPServer` wrapping `GitHubAcquireConnectorService`, `GitHubExecuteConnectorService`, `GitHubShipConnectorService`. 11 tools: 4 read, 7 write.
+
+- [x] **W5A-07** — Implement `SlackMCPServer` wrapping `SlackConnectorService`. 2 tools: 1 read (`slack.getChannelHistory`), 1 write (`slack.postMessage`).
+
+- [x] **W5A-08** — Wire `MCPRegistryService` into `AgentDispatcherService` via `@Optional()` injection. Add `getMCPRegistry()` getter. `BaseAgent.getMCPTools()` calls registry to get phase-filtered tools for injection into LLM tool list.
+
+- [x] **W5A-09** — Add `mcp_tool_call` to `NON_CRITICAL_AUDIT_EVENT_TYPES` in `audit-event-types.ts`. `BaseAgent` emits this event on every MCP tool call with: `toolName`, `mcpServer`, `permission`, `success`, `durationMs`, `error` (if failed).
+
+- [x] **W5A-10** — Implement `ConnectorSettingsService` and `ConnectorSettingsController` in `ConnectorSettingsModule`. REST endpoints: `GET /api/connector-settings/:harnessId`, `POST /api/connector-settings/:harnessId`, `POST /api/connector-settings/:id/test`, `DELETE /api/connector-settings/:id`, `GET /api/connector-settings/:harnessId/tools`.
+
+- [x] **W5A-11** — Wire `MCPModule` and `ConnectorSettingsModule` into `AppModule` and `OrchestratorModule`. Verify `npx nest build` compiles cleanly.
+
+- [x] **W5A-12** — E2E test: ACQUIRE agent calls `jira.getIssue` (read tool) via MCP. Verify tool is available and returns expected result.
+
+- [x] **W5A-13** — E2E test: EXECUTE agent calls `github.cloneRepo` + `github.applyEdit` (write tools). Verify write tools are available in EXECUTE phase.
+
+- [x] **W5A-14** — E2E test: Attempt write tool in PLAN phase. Verify FC-04 rejection — write tool not listed in phase-filtered tools.
+
+- [x] **W5A-15** — E2E test: Comprehensive `MCPRegistryService` phase filtering across all 5 TAPES phases. Verify tool visibility, server isolation per harness, and cross-server tool routing.
+
+**Wave 5A complete when:** agents discover and call MCP tools, FC-04 write-tool restriction is enforced, `mcp_tool_call` audit events are emitted, 100% test coverage maintained.
+
+---
+
+## Wave 5B — Multi-repo Support + Memory System
 
 **Goal:** multiple registered repositories work end-to-end. The full memory system operates: embeddings generated, records stored, semantic query works, staging merges at Ship. Memory persists across runs and influences subsequent Acquire phases.
 

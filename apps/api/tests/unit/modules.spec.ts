@@ -11,6 +11,8 @@ import { WebSocketModule } from '../../src/websocket/websocket.module';
 import { OrchestratorModule } from '../../src/orchestrator/orchestrator.module';
 import { WorkflowModule } from '../../src/workflow/workflow.module';
 import { ApiModule } from '../../src/api/api.module';
+import { MCPModule } from '../../src/mcp/mcp.module';
+import { ConnectorSettingsModule } from '../../src/connector-settings/connector-settings.module';
 import { PrismaService } from '../../src/persistence/prisma.service';
 import { WorkflowClient } from '@temporalio/client';
 import { TemporalWorkerService } from '../../src/workflow/temporal-worker.service';
@@ -122,5 +124,24 @@ describe('Module stubs', () => {
     const { RunsController } = await import('../../src/api/runs.controller');
     expect(mod.get(HealthController)).toBeDefined();
     expect(mod.get(RunsController)).toBeDefined();
+  });
+
+  it('MCPModule should compile and export MCPRegistryService and MCPServerFactory', async () => {
+    const mod = await Test.createTestingModule({ imports: [MCPModule] }).compile();
+    expect(mod).toBeDefined();
+    const { MCPRegistryService } = await import('../../src/mcp/mcp-registry.service');
+    const { MCPServerFactory } = await import('../../src/mcp/mcp-server.factory');
+    expect(mod.get(MCPRegistryService)).toBeDefined();
+    expect(mod.get(MCPServerFactory)).toBeDefined();
+  });
+
+  it('ConnectorSettingsModule should compile and register controller', async () => {
+    const mod = await Test.createTestingModule({ imports: [ConnectorSettingsModule] })
+      .overrideProvider(PrismaService)
+      .useValue(mockPrisma)
+      .compile();
+    expect(mod).toBeDefined();
+    const { ConnectorSettingsController } = await import('../../src/connector-settings/connector-settings.controller');
+    expect(mod.get(ConnectorSettingsController)).toBeDefined();
   });
 });

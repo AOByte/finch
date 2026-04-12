@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { RunRepository } from '../persistence/run.repository';
 import { AgentConfigService } from '../agents/agent-config.service';
@@ -6,6 +6,7 @@ import { RuleEnforcementService } from './rule-enforcement.service';
 import { AuditLoggerService } from '../audit/audit-logger.service';
 import { LLMRegistryService } from '../llm/llm-registry.service';
 import { MemoryConnectorService } from '../memory/memory-connector.service';
+import { MCPRegistryService } from '../mcp/mcp-registry.service';
 import { GateEvent } from '../agents/gate-event';
 import { ForcedGateError } from '../agents/errors';
 import type {
@@ -60,6 +61,7 @@ export class AgentDispatcherService {
     private readonly auditLogger: AuditLoggerService,
     private readonly llmRegistry: LLMRegistryService,
     private readonly memoryConnector: MemoryConnectorService,
+    @Optional() private readonly mcpRegistry?: MCPRegistryService,
   ) {}
 
   registerPhaseRunner(
@@ -281,5 +283,9 @@ export class AgentDispatcherService {
 
   getAuditLogger(): AuditLoggerService {
     return this.auditLogger;
+  }
+
+  getMCPRegistry(): MCPRegistryService | undefined {
+    return this.mcpRegistry;
   }
 }

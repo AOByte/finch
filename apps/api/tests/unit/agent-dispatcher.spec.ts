@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentDispatcherService } from '../../src/orchestrator/agent-dispatcher.service';
+import { MCPRegistryService } from '../../src/mcp/mcp-registry.service';
 import { GateEvent } from '../../src/agents/gate-event';
 import { ForcedGateError } from '../../src/agents/errors';
 
@@ -330,5 +331,23 @@ describe('AgentDispatcherService', () => {
     // Only the non-null artifact is included
     expect((result as GateEvent).snapshot!.agentOutputsBeforeGate).toHaveLength(1);
     expect((result as GateEvent).snapshot!.agentOutputsBeforeGate[0].artifact).toEqual({ data: 'artifact-0' });
+  });
+
+  it('getMCPRegistry returns undefined when not injected', () => {
+    expect(service.getMCPRegistry()).toBeUndefined();
+  });
+
+  it('getMCPRegistry returns registry when injected', () => {
+    const registry = new MCPRegistryService();
+    const svc = new AgentDispatcherService(
+      mockRunRepository as never,
+      mockAgentConfigService as never,
+      mockRuleEnforcement as never,
+      mockAuditLogger as never,
+      mockLLMRegistry as never,
+      mockMemoryConnector as never,
+      registry,
+    );
+    expect(svc.getMCPRegistry()).toBe(registry);
   });
 });

@@ -109,6 +109,20 @@ These map directly to the FC and IC constraints in `AGENTS.md`. Written as testa
 
 ---
 
+## MCP (Model Context Protocol)
+
+**MCP-01** `HARD` — MCP read tools (`permission: 'read'`) must be available to agents in all 5 TAPES phases. Write tools (`permission: 'write'`) must only be available in EXECUTE and SHIP phases. Exposing write tools in TRIGGER, ACQUIRE, or PLAN phases is a defect per FC-04.
+
+**MCP-02** `HARD` — Every MCP tool call must emit an `mcp_tool_call` audit event with: `toolName`, `mcpServer`, `permission`, `success`, and `durationMs`. Failed calls must include `error`.
+
+**MCP-03** `HARD` — `ConnectorRegistryService` must be preserved alongside `MCPRegistryService`. Gate delivery depends on `ConnectorRegistryService.getTriggerConnector().sendMessage()`. Do not merge or replace it.
+
+**MCP-04** `SOFT` — MCP servers should wrap existing Wave 4 connector services as thin adapters. Do not rewrite connector logic inside MCP server classes.
+
+**MCP-05** `HARD` — `MCPRegistryService` must scope servers per harness. `listToolsForHarness(harnessId, phase)` returns only tools from servers registered for that harness, filtered by phase permission.
+
+---
+
 ## Connectors
 
 **CO-01** `SOFT` — Connector failures (network errors, auth failures, rate limits) should be handled with exponential backoff retry before propagating. They must not trigger gate events.

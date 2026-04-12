@@ -107,6 +107,8 @@ finch/
 │   │   ├── workflow/         # finch.workflow.ts, TemporalWorkerService, finch.activities.ts
 │   │   ├── agents/           # TriggerAgent, AcquireAgent, PlanAgent, ExecuteAgent, ShipAgent
 │   │   ├── connectors/       # Slack, Webhook, Cron, Jira, GitHub×3
+│   │   ├── mcp/              # MCPRegistryService, MCPServerFactory, MCP server adapters
+│   │   ├── connector-settings/ # ConnectorSettingsService, ConnectorSettingsController
 │   │   ├── llm/              # LLMRegistry, AnthropicConnector, OpenAIConnector
 │   │   ├── memory/           # MemoryConnector, MemoryActivities, EmbeddingService
 │   │   ├── audit/            # AuditLoggerService, audit-event-types.ts
@@ -139,10 +141,12 @@ No circular imports. `PersistenceModule` and `AuditModule` are leaf dependencies
 
 ```
 AppModule
-├── OrchestratorModule   (imports: AgentModule, ConnectorModule, MemoryModule, AuditModule, PersistenceModule, LLMModule)
+├── OrchestratorModule   (imports: AgentModule, ConnectorModule, MemoryModule, AuditModule, PersistenceModule, LLMModule, MCPModule)
 ├── WorkflowModule       (imports: AgentModule, MemoryModule, OrchestratorModule)
 ├── AgentModule          (imports: LLMModule, ConnectorModule, MemoryModule, AuditModule, PersistenceModule)
 ├── ConnectorModule      (imports: PersistenceModule)
+├── MCPModule            (exports: MCPRegistryService, MCPServerFactory)
+├── ConnectorSettingsModule (imports: MCPModule, ConnectorModule)
 ├── LLMModule
 ├── MemoryModule         (imports: LLMModule, PersistenceModule, AuditModule)
 ├── AuditModule          (imports: PersistenceModule)
@@ -192,6 +196,8 @@ The decisions most likely to go wrong silently. Read the referenced file before 
 **Locked preamble assembly** — assembled in `AgentDispatcherService` and prepended to the system prompt at invocation time. Never stored in the database. Never returned to the frontend as an editable field. See `src/orchestrator/agent-dispatcher.service.ts`.
 
 **Slack gate routing** — on every incoming message, the Slack connector checks `thread_ts` against open gate events. Match → `GateControllerService.resolve()`. No match → new workflow. See `src/connectors/slack.connector.service.ts`.
+
+**MCP tool availability** — agents in all 5 TAPES phases have access to MCP tools via `MCPRegistryService`. Read tools (`permission: 'read'`) are available in all phases. Write tools (`permission: 'write'`) are restricted to EXECUTE and SHIP phases per FC-04. `BaseAgent.getMCPTools()` calls `MCPRegistryService.listToolsForHarness(harnessId, phase)` to get phase-filtered tools. MCP tool calls are routed through `MCPRegistryService.executeTool()` and logged as `mcp_tool_call` audit events. See `src/mcp/mcp-registry.service.ts` and `src/agents/base-agent.ts`.
 
 **Audit log immutability** — enforced at the PostgreSQL layer via `CREATE RULE no_audit_update` and `CREATE RULE no_audit_delete`. `AuditLoggerService` exposes no mutation methods. See `src/audit/audit-logger.service.ts`.
 
@@ -253,7 +259,9 @@ TRIGGER_PREFIX=@finch
 | 2 | All repositories (including `getPersistedPipelineArtifact`), seed data, `finchWorkflow` with stub activities end-to-end | Workflow COMPLETED in Temporal UI and Postgres |
 | 3 | All 5 agents with real LLM loops, locked preamble, gate fire + resume. Minimal `WebhookConnectorService` (POST endpoint, no HMAC). Gate question logged to audit log; resolved via `POST /api/gate/:id/respond` | Vague task via Webhook → Gate A fires → question in audit log → resolved via API → run completes |
 | 4 | Slack connector (full), GitHub connectors (Acquire/Execute/Ship), Jira connector, Socket.io gateway, HMAC on Webhook | Slack trigger starts run, Socket.io delivers live events, GitHub Ship opens PR |
-| 5 | Multi-repo support + full memory system (staging, merge, semantic query) | Multi-repo PRs created, memory persists across runs |
+| 5A | MCP core infrastructure + built-in servers (Jira, GitHub, Slack) with API-token auth | Agents discover and call tools via MCP, FC-04 write-tool restriction enforced |
+| 5B | Multi-repo support + full memory system (staging, merge, semantic query) | Multi-repo PRs created, memory persists across runs |
+| 5C | OAuth flows for MCP servers + custom MCP server support | Jira Connect / GitHub App OAuth, user-provided MCP servers |
 | 6 | React UI + Prometheus + Grafana + Playwright e2e | Playwright tests pass, full run observable in UI |
 
 Progress tracked in `TASKS.md`. Complete and verify each wave before starting the next.
