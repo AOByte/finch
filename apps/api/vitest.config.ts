@@ -6,5 +6,10 @@ export default defineConfig({
     root: './',
     include: ['src/**/*.spec.ts', 'tests/unit/**/*.spec.ts'],
     passWithNoTests: true,
+    coverage: {
+      include: ['src/**/*.ts'],
+      exclude: ['src/**/*.spec.ts', 'src/**/*.d.ts'],
+      all: true,
+    },
   },
 });

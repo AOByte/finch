@@ -54,6 +54,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api test run
+      - run: pnpm --filter web test run
 
   integration-tests:
     runs-on: ubuntu-latest
@@ -89,7 +90,11 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api prisma generate
       - run: pnpm --filter api prisma migrate deploy
+        env:
+          DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
+      - run: pnpm --filter api prisma db seed
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
       - run: pnpm --filter api test:integration
