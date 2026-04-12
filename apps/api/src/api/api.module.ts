@@ -9,6 +9,7 @@ import { AuditModule } from '../audit/audit.module';
 import { PersistenceModule } from '../persistence/persistence.module';
 import { WebSocketModule } from '../websocket/websocket.module';
 import { AuthModule } from '../auth/auth.module';
+import { HealthController } from './health.controller';
 
 @Module({
   imports: [
@@ -23,7 +24,7 @@ import { AuthModule } from '../auth/auth.module';
     WebSocketModule,
     AuthModule,
   ],
-  controllers: [],
+  controllers: [HealthController],
   providers: [],
 })
 export class ApiModule {}
