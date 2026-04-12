@@ -50,6 +50,17 @@ describe('Module stubs', () => {
     expect(mod).toBeDefined();
   });
 
+  it('AuditModule REDIS_PUBLISHER factory returns client on success', async () => {
+    const { REDIS_PUBLISHER } = await import('../../src/audit/audit-logger.service');
+    const mockClient = { connect: vi.fn().mockResolvedValue(undefined), publish: vi.fn() };
+    const redis = await import('redis');
+    vi.spyOn(redis, 'createClient').mockReturnValue(mockClient as never);
+    const mod = await Test.createTestingModule({ imports: [AuditModule] }).compile();
+    const publisher = mod.get(REDIS_PUBLISHER, { strict: false });
+    expect(publisher).toBeDefined();
+    vi.restoreAllMocks();
+  });
+
   it('ConnectorModule should compile', async () => {
     const mod = await Test.createTestingModule({ imports: [ConnectorModule] }).compile();
     expect(mod).toBeDefined();
