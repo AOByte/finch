@@ -2122,42 +2122,58 @@ describe('Scenario 33: Memory merge after Ship phase', () => {
   });
 });
 
-// ─── Scenario 34: Gate in TRIGGER/SHIP — graceful handling ───────────────────
+// ─── Scenario 34: Gate in TRIGGER/SHIP — blocked by BaseAgent (FC-01/FC-07) ──
 
-describe('Scenario 34: Gate in TRIGGER/SHIP — graceful handling at activity level', () => {
-  it('trigger agent CAN return GateEvent but workflow activity handles it gracefully', async () => {
+describe('Scenario 34: Gate in TRIGGER/SHIP — blocked by BaseAgent guard', () => {
+  it('trigger agent blocks fire_gate in TRIGGER phase, emits agent_anomaly, and continues', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
 
-    // Trigger agent fires gate (shouldn't happen but technically possible)
+    // First LLM call: fire_gate in TRIGGER → blocked by BaseAgent guard
     mockLLM.enqueueGate('Task is unclear', 'What do you want?');
-    const triggerCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
+    // Second LLM call: agent continues with end_turn after gate is blocked
+    mockLLM.enqueueJson({
+      runId,
+      harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'do something',
+      intent: 'unknown',
+      scope: [],
+    });
 
+    const triggerCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
     const result = await triggerAgent.runTrigger(
       { rawText: 'do something', source, harnessId: WELL_KNOWN_HARNESS_ID, runId },
       triggerCtx,
     );
 
-    // The agent returns a GateEvent
-    expect(result).toBeInstanceOf(GateEvent);
-    const gate = result as GateEvent;
-    expect(gate.phase).toBe('TRIGGER');
+    // BaseAgent blocks the gate — no GateEvent returned
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const descriptor = result as TaskDescriptor;
+    expect(descriptor.normalizedPrompt).toBe('do something');
 
-    // The temporal worker's runTriggerPhase activity would handle this
-    // by returning a fallback TaskDescriptor (line 98-107 of temporal-worker.service.ts)
-    // Verify the gate has the expected shape even from TRIGGER phase
-    expect(gate.runId).toBe(runId);
-    expect(gate.question).toBe('What do you want?');
+    // Verify agent_anomaly audit event was emitted
+    const anomalyJobs = mockAuditQueue.jobs.filter(
+      (j: { data: { eventType: string } }) => j.data.eventType === 'agent_anomaly',
+    );
+    expect(anomalyJobs.length).toBeGreaterThanOrEqual(1);
+    expect((anomalyJobs[0].data as { payload: { anomalyType: string } }).payload.anomalyType).toBe('fire_gate_in_gate_free_phase');
+    expect((anomalyJobs[0].data as { payload: { phase: string } }).payload.phase).toBe('TRIGGER');
   });
 
-  it('ship agent CAN return GateEvent but workflow activity handles it gracefully', async () => {
+  it('ship agent blocks fire_gate in SHIP phase, emits agent_anomaly, and continues', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
 
-    // Ship agent fires gate
+    // First LLM call: fire_gate in SHIP → blocked by BaseAgent guard
     mockLLM.enqueueGate('Cannot ship without approval', 'Is this approved for production?');
+    // Second LLM call: agent continues with end_turn after gate is blocked
+    mockLLM.enqueueJson({
+      repoId: 'default-repo',
+      commitSha: 'abc123',
+    });
+
     const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
     const plan: PlanArtifact = { runId, hasGap: false, steps: ['Deploy'] };
     const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
@@ -2168,30 +2184,44 @@ describe('Scenario 34: Gate in TRIGGER/SHIP — graceful handling at activity le
 
     const result = await shipAgent.runShip(plan, report, context, 'default-repo', shipCtx);
 
-    // ShipAgent returns GateEvent (line 121-123 of ship-agent.service.ts)
-    expect(result).toBeInstanceOf(GateEvent);
-    const gate = result as GateEvent;
-    expect(gate.phase).toBe('SHIP');
+    // BaseAgent blocks the gate — no GateEvent returned
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const shipResult = result as { repoId: string; commitSha: string };
+    expect(shipResult.repoId).toBe('default-repo');
 
-    // The temporal worker's runShipPhase activity handles this
-    // by returning { repoId, commitSha: 'gate-fired' } (line 222-224)
-    // SHIP has NO gate loop in the workflow, so the gate would be silently lost
-    expect(gate.question).toBe('Is this approved for production?');
+    // Verify agent_anomaly audit event was emitted
+    const anomalyJobs = mockAuditQueue.jobs.filter(
+      (j: { data: { eventType: string } }) => j.data.eventType === 'agent_anomaly',
+    );
+    expect(anomalyJobs.length).toBeGreaterThanOrEqual(1);
+    const shipAnomaly = anomalyJobs.find(
+      (j: { data: { payload: { phase: string } } }) => (j.data as { payload: { phase: string } }).payload.phase === 'SHIP',
+    );
+    expect(shipAnomaly).toBeDefined();
+    expect((shipAnomaly!.data as { payload: { anomalyType: string } }).payload.anomalyType).toBe('fire_gate_in_gate_free_phase');
   });
 });
 
-// ─── Scenario 35: parseOutput fallback — all 5 agents ────────────────────────
+// ─── Scenario 35: parseOutput fallback — audit events + retry + ExecuteAgent safety ─
 
-describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', () => {
-  it('TriggerAgent returns fallback TaskDescriptor on invalid JSON', async () => {
+describe('Scenario 35: parseOutput fallback with audit events and retry (W4-00b)', () => {
+  it('TriggerAgent retries once then falls back, emitting parse_output_fallback audit', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
 
-    // LLM returns non-JSON text
+    // First LLM call: non-JSON → triggers parse_output_fallback + retry
     mockLLM.enqueue({
       text: 'This is not JSON at all',
       content: [{ type: 'text', text: 'This is not JSON at all' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+    // Second LLM call (retry): also non-JSON → falls back via parseFallback
+    mockLLM.enqueue({
+      text: 'Still not JSON',
+      content: [{ type: 'text', text: 'Still not JSON' }],
       toolUses: [],
       usage: { inputTokens: 10, outputTokens: 10 },
       stopReason: 'end_turn',
@@ -2203,22 +2233,34 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
       ctx,
     );
 
-    // Falls back to basic descriptor with text as normalizedPrompt
     expect(result).not.toBeInstanceOf(GateEvent);
     const descriptor = result as TaskDescriptor;
-    expect(descriptor.normalizedPrompt).toBe('This is not JSON at all');
+    expect(descriptor.normalizedPrompt).toBe('Still not JSON');
     expect(descriptor.intent).toBe('unknown');
-    expect(descriptor.scope).toEqual([]);
+
+    // Verify parse_output_fallback audit events were emitted
+    const fallbackJobs = mockAuditQueue.jobs.filter(
+      (j: { data: { eventType: string } }) => j.data.eventType === 'parse_output_fallback',
+    );
+    expect(fallbackJobs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('AcquireAgent returns fallback ContextObject on invalid JSON', async () => {
+  it('AcquireAgent retries once then falls back on invalid JSON', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
 
+    // Two non-JSON responses (first triggers retry, second triggers fallback)
     mockLLM.enqueue({
       text: 'Not valid JSON',
       content: [{ type: 'text', text: 'Not valid JSON' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+    mockLLM.enqueue({
+      text: 'Still not JSON',
+      content: [{ type: 'text', text: 'Still not JSON' }],
       toolUses: [],
       usage: { inputTokens: 10, outputTokens: 10 },
       stopReason: 'end_turn',
@@ -2235,10 +2277,9 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
     const context = result as ContextObject;
     expect(context.hasGap).toBe(false);
     expect(context.files).toEqual([]);
-    expect(context.dependencies).toEqual([]);
   });
 
-  it('PlanAgent returns fallback PlanArtifact on invalid JSON', async () => {
+  it('PlanAgent retries once then falls back on invalid JSON', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
@@ -2246,6 +2287,13 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
     mockLLM.enqueue({
       text: 'Not valid JSON plan',
       content: [{ type: 'text', text: 'Not valid JSON plan' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+    mockLLM.enqueue({
+      text: 'Still not JSON plan',
+      content: [{ type: 'text', text: 'Still not JSON plan' }],
       toolUses: [],
       usage: { inputTokens: 10, outputTokens: 10 },
       stopReason: 'end_turn',
@@ -2261,11 +2309,10 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
     expect(result).not.toBeInstanceOf(GateEvent);
     const plan = result as PlanArtifact;
     expect(plan.hasGap).toBe(false);
-    // PlanAgent falls back to [response.text] as steps
-    expect(plan.steps).toEqual(['Not valid JSON plan']);
+    expect(plan.steps).toEqual(['Still not JSON plan']);
   });
 
-  it('ExecuteAgent returns fallback VerificationReport on invalid JSON', async () => {
+  it('ExecuteAgent returns allPassing=false on parse failure (W4-00b safety)', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
@@ -2273,6 +2320,13 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
     mockLLM.enqueue({
       text: 'Not valid JSON report',
       content: [{ type: 'text', text: 'Not valid JSON report' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+    mockLLM.enqueue({
+      text: 'Still not JSON report',
+      content: [{ type: 'text', text: 'Still not JSON report' }],
       toolUses: [],
       usage: { inputTokens: 10, outputTokens: 10 },
       stopReason: 'end_turn',
@@ -2288,12 +2342,18 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
     const result = await executeAgent.runExecute(plan, context, ctx);
     expect(result).not.toBeInstanceOf(GateEvent);
     const report = result as VerificationReport;
-    expect(report.allPassing).toBe(true);
-    // ExecuteAgent falls back to [response.text] as results
-    expect(report.results).toEqual(['Not valid JSON report']);
+    // W4-00b: NEVER claim allPassing on parse failure
+    expect(report.allPassing).toBe(false);
+    expect(report.results).toEqual(['Still not JSON report']);
+
+    // Verify parse_output_fallback audit events
+    const fallbackJobs = mockAuditQueue.jobs.filter(
+      (j: { data: { eventType: string } }) => j.data.eventType === 'parse_output_fallback',
+    );
+    expect(fallbackJobs.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('ShipAgent returns fallback ShipResult on invalid JSON', async () => {
+  it('ShipAgent retries once then falls back on invalid JSON', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
@@ -2301,6 +2361,13 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
     mockLLM.enqueue({
       text: 'Not valid JSON ship',
       content: [{ type: 'text', text: 'Not valid JSON ship' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+    mockLLM.enqueue({
+      text: 'Still not JSON ship',
+      content: [{ type: 'text', text: 'Still not JSON ship' }],
       toolUses: [],
       usage: { inputTokens: 10, outputTokens: 10 },
       stopReason: 'end_turn',
@@ -2316,8 +2383,6 @@ describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', (
 
     const result = await shipAgent.runShip(plan, report, context, 'default-repo', ctx);
     expect(result).not.toBeInstanceOf(GateEvent);
-    // ShipAgent falls back to { repoId: '', commitSha: 'stub-sha' }
-    // But runShip overrides repoId with the passed repoId
     const ship = result as { repoId: string; commitSha: string };
     expect(ship.commitSha).toBe('stub-sha');
   });

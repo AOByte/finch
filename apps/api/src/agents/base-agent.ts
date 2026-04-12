@@ -23,6 +23,7 @@ export abstract class BaseAgent<TInput, TOutput> {
   abstract buildInitialMessage(input: TInput): string;
   abstract buildToolSet(context: AgentContext): Tool[];
   abstract parseOutput(response: LLMResponse): TOutput;
+  abstract parseFallback(response: LLMResponse): TOutput;
   abstract executeToolCall(
     toolName: string,
     toolInput: Record<string, unknown>,
@@ -53,6 +54,7 @@ export abstract class BaseAgent<TInput, TOutput> {
     const messages: Message[] = [
       { role: 'user', content: params.initialMessage },
     ];
+    let parseRetried = false;
 
     for (let iteration = 0; iteration < 50; iteration++) {
       const response = await params.llm.complete({
@@ -82,12 +84,67 @@ export abstract class BaseAgent<TInput, TOutput> {
       messages.push({ role: 'assistant', content: response.text });
 
       if (response.stopReason === 'end_turn') {
-        return this.parseOutput(response);
+        try {
+          return this.parseOutput(response);
+        } catch (parseErr) {
+          // W4-00b: Emit audit event on parse failure and retry once
+          await this.auditLog({
+            runId: params.context.runId,
+            harnessId: params.context.harnessId,
+            phase: params.context.phase,
+            eventType: 'parse_output_fallback',
+            actor: { agentId: params.context.agentConfig.agentId },
+            payload: {
+              rawText: response.text.slice(0, 500),
+              error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+              iteration,
+            },
+          });
+
+          // Retry once: ask the LLM to produce valid JSON
+          if (!parseRetried) {
+            parseRetried = true;
+            messages.push({
+              role: 'user',
+              content: 'Your previous response was not valid JSON. Please respond ONLY with a valid JSON object matching the expected schema.',
+            });
+            continue;
+          }
+
+          // Already retried once — use the fallback
+          return this.parseFallback(response);
+        }
       }
 
       if (response.stopReason === 'tool_use') {
         for (const toolUse of response.toolUses) {
           if (toolUse.name === 'fire_gate') {
+            // FC-01 / FC-07: TRIGGER and SHIP phases must never gate.
+            // An LLM hallucination should not cause data loss.
+            if (params.context.phase === 'TRIGGER' || params.context.phase === 'SHIP') {
+              await this.auditLog({
+                runId: params.context.runId,
+                harnessId: params.context.harnessId,
+                phase: params.context.phase,
+                eventType: 'agent_anomaly',
+                actor: { agentId: params.context.agentConfig.agentId },
+                payload: {
+                  anomalyType: 'fire_gate_in_gate_free_phase',
+                  phase: params.context.phase,
+                  gapDescription: toolUse.input['gapDescription'],
+                  question: toolUse.input['question'],
+                },
+              });
+
+              // Inject a tool result so the LLM conversation can continue
+              messages.push({
+                role: 'user',
+                content: [{ type: 'tool_result', toolUseId: toolUse.id,
+                  content: 'Gate not permitted in this phase. Continue without gating.' }],
+              });
+              continue; // do NOT return GateEvent
+            }
+
             // fire_gate RETURNS a GateEvent — does NOT throw
             return new GateEvent({
               phase: params.context.phase,

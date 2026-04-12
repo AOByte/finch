@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { PersistenceModule } from '../../src/persistence/persistence.module';
 import { LLMModule } from '../../src/llm/llm.module';
@@ -19,6 +19,11 @@ const mockPrisma = {
   $connect: vi.fn(),
   $disconnect: vi.fn(),
 };
+
+// Set ENCRYPTION_KEY for CredentialEncryptionService in all module tests
+beforeAll(() => {
+  process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+});
 
 describe('Module stubs', () => {
   it('PersistenceModule should compile and export PrismaService', async () => {
@@ -43,6 +48,17 @@ describe('Module stubs', () => {
   it('AuditModule should compile', async () => {
     const mod = await Test.createTestingModule({ imports: [AuditModule] }).compile();
     expect(mod).toBeDefined();
+  });
+
+  it('AuditModule REDIS_PUBLISHER factory returns client on success', async () => {
+    const { REDIS_PUBLISHER } = await import('../../src/audit/audit-logger.service');
+    const mockClient = { connect: vi.fn().mockResolvedValue(undefined), publish: vi.fn() };
+    const redis = await import('redis');
+    vi.spyOn(redis, 'createClient').mockReturnValue(mockClient as never);
+    const mod = await Test.createTestingModule({ imports: [AuditModule] }).compile();
+    const publisher = mod.get(REDIS_PUBLISHER, { strict: false });
+    expect(publisher).toBeDefined();
+    vi.restoreAllMocks();
   });
 
   it('ConnectorModule should compile', async () => {

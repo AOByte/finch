@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { PlanAgentService } from '../../src/agents/plan-agent.service';
 import { GateEvent } from '../../src/agents/gate-event';
+import { ParseOutputError } from '../../src/agents/errors';
 
 describe('PlanAgentService', () => {
   const mockAuditLogger = { log: vi.fn().mockResolvedValue(undefined) };
@@ -56,8 +57,15 @@ describe('PlanAgentService', () => {
     expect(result.steps).toEqual(['step1', 'step2']);
   });
 
-  it('parseOutput handles invalid JSON', () => {
-    const result = service.parseOutput({
+  it('parseOutput throws ParseOutputError on invalid JSON', () => {
+    expect(() => service.parseOutput({
+      text: 'plain text plan', content: [], toolUses: [],
+      usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
+    })).toThrow(ParseOutputError);
+  });
+
+  it('parseFallback returns plan with text as single step', () => {
+    const result = service.parseFallback({
       text: 'plain text plan', content: [], toolUses: [],
       usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });

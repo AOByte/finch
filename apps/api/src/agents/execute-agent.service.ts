@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseAgent } from './base-agent';
 import { GateEvent } from './gate-event';
+import { ParseOutputError } from './errors';
 import type {
   LLMConnector,
   LLMResponse,
@@ -59,16 +60,22 @@ export class ExecuteAgentService extends BaseAgent<ExecuteInput, VerificationRep
 
   parseOutput(response: LLMResponse): VerificationReport {
     try {
-      const parsed = JSON.parse(response.text);
-      return parsed as VerificationReport;
-    } catch {
-      return {
-        runId: '',
-        hasGap: false,
-        allPassing: true,
-        results: [response.text],
-      };
+      return JSON.parse(response.text) as VerificationReport;
+    } catch (err) {
+      throw new ParseOutputError(
+        `ExecuteAgent failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
+  }
+
+  parseFallback(response: LLMResponse): VerificationReport {
+    // W4-00b safety: NEVER claim allPassing on parse failure
+    return {
+      runId: '',
+      hasGap: false,
+      allPassing: false,
+      results: [response.text],
+    };
   }
 
   async executeToolCall(

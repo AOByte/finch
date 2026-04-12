@@ -1,10 +1,16 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional, Inject } from '@nestjs/common';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { Prisma } from '@prisma/client';
 import { AuditRepository } from './audit.repository';
 import { isCriticalEvent } from './audit-event-types';
 import type { AuditEventData } from '@finch/types';
+
+export const REDIS_PUBLISHER = 'REDIS_PUBLISHER';
+
+export interface RedisPublisher {
+  publish(channel: string, message: string): Promise<number>;
+}
 
 @Injectable()
 export class AuditLoggerService {
@@ -13,6 +19,7 @@ export class AuditLoggerService {
   constructor(
     private readonly auditRepository: AuditRepository,
     @InjectQueue('audit-write') private readonly auditQueue: Queue,
+    @Optional() @Inject(REDIS_PUBLISHER) private readonly redisPublisher?: RedisPublisher,
   ) {}
 
   async log(event: AuditEventData): Promise<void> {
@@ -31,6 +38,18 @@ export class AuditLoggerService {
     } else {
       await this.auditQueue.add('audit-write', data);
       this.logger.debug(`Non-critical audit event enqueued: ${event.eventType}`);
+    }
+
+    // Publish to Redis pub/sub for real-time delivery via RunGateway
+    if (this.redisPublisher && event.harnessId) {
+      try {
+        await this.redisPublisher.publish(
+          `audit-events:${event.harnessId}`,
+          JSON.stringify({ ...data, createdAt: new Date().toISOString() }),
+        );
+      } catch (err) {
+        this.logger.warn(`Redis publish failed: ${(err as Error).message}`);
+      }
     }
   }
 }

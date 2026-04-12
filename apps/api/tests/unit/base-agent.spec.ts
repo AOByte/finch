@@ -54,6 +54,10 @@ class TestAgent extends BaseAgent<string, string> {
     return response.text;
   }
 
+  parseFallback(response: LLMResponse): string {
+    return `fallback:${response.text}`;
+  }
+
   async executeToolCall(
     toolName: string,
     _toolInput: Record<string, unknown>,
@@ -138,7 +142,7 @@ describe('BaseAgent', () => {
     expect(result).toBe('final answer');
   });
 
-  it('run() returns GateEvent on fire_gate tool use', async () => {
+  it('run() returns GateEvent on fire_gate tool use in ACQUIRE phase', async () => {
     mockLLM.complete.mockResolvedValue({
       text: '',
       content: [],
@@ -147,13 +151,73 @@ describe('BaseAgent', () => {
       stopReason: 'tool_use',
     });
 
-    const result = await agent.run('test', makeContext());
+    const ctx = makeContext();
+    ctx.phase = 'ACQUIRE';
+    const result = await agent.run('test', ctx);
     expect(result).toBeInstanceOf(GateEvent);
     const gate = result as GateEvent;
     expect(gate.gapDescription).toBe('missing info');
     expect(gate.question).toBe('what?');
-    expect(gate.phase).toBe('TRIGGER');
+    expect(gate.phase).toBe('ACQUIRE');
     expect(gate.runId).toBe('r1');
+  });
+
+  it('run() blocks fire_gate in TRIGGER phase (FC-01) and continues loop', async () => {
+    // First call: fire_gate in TRIGGER → blocked, tool_result injected
+    mockLLM.complete.mockResolvedValueOnce({
+      text: '',
+      content: [],
+      toolUses: [{ id: 't1', name: 'fire_gate', input: { gapDescription: 'gap', question: 'q?' } }],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'tool_use',
+    });
+    // Second call: end_turn
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'continued',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = makeContext();
+    ctx.phase = 'TRIGGER';
+    const result = await agent.run('test', ctx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+    expect(result).toBe('continued');
+    expect(mockLLM.complete).toHaveBeenCalledTimes(2);
+
+    // Verify agent_anomaly audit event was logged
+    const anomalyLogs = agent.auditLogs.filter((l) => l.eventType === 'agent_anomaly');
+    expect(anomalyLogs).toHaveLength(1);
+    expect((anomalyLogs[0].payload as Record<string, unknown>).anomalyType).toBe('fire_gate_in_gate_free_phase');
+  });
+
+  it('run() blocks fire_gate in SHIP phase (FC-07) and continues loop', async () => {
+    mockLLM.complete.mockResolvedValueOnce({
+      text: '',
+      content: [],
+      toolUses: [{ id: 't1', name: 'fire_gate', input: { gapDescription: 'gap', question: 'q?' } }],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'tool_use',
+    });
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'shipped',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = makeContext();
+    ctx.phase = 'SHIP';
+    const result = await agent.run('test', ctx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+    expect(result).toBe('shipped');
+
+    const anomalyLogs = agent.auditLogs.filter((l) => l.eventType === 'agent_anomaly');
+    expect(anomalyLogs).toHaveLength(1);
+    expect(anomalyLogs[0].phase).toBe('SHIP');
   });
 
   it('run() processes non-gate tool calls and continues loop', async () => {
@@ -272,6 +336,87 @@ describe('BaseAgent', () => {
 
     const callArgs = mockLLM.complete.mock.calls[0][0];
     expect(callArgs.maxTokens).toBe(4096);
+  });
+
+  it('run() retries once on parseOutput failure then returns parseFallback result', async () => {
+    // Create a special agent that throws on parseOutput for non-JSON
+    class FailParseAgent extends TestAgent {
+      parseOutput(response: LLMResponse): string {
+        try {
+          return JSON.parse(response.text);
+        } catch {
+          throw new Error('parse failed');
+        }
+      }
+      parseFallback(response: LLMResponse): string {
+        return `fallback:${response.text}`;
+      }
+    }
+
+    const failAgent = new FailParseAgent(mockLLM as unknown as LLMConnector);
+
+    // First call: non-JSON → parse fails → retry message injected
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'not json',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+    // Second call (retry): still non-JSON → parseFallback used
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'still not json',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const result = await failAgent.run('test', makeContext());
+    expect(result).toBe('fallback:still not json');
+    expect(mockLLM.complete).toHaveBeenCalledTimes(2);
+
+    // Verify parse_output_fallback audit events were logged
+    const fallbackLogs = failAgent.auditLogs.filter((l) => l.eventType === 'parse_output_fallback');
+    expect(fallbackLogs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('run() returns parsed output if retry succeeds with valid JSON', async () => {
+    class FailParseAgent extends TestAgent {
+      parseOutput(response: LLMResponse): string {
+        const parsed = JSON.parse(response.text);
+        return parsed.value;
+      }
+      parseFallback(response: LLMResponse): string {
+        return `fallback:${response.text}`;
+      }
+    }
+
+    const failAgent = new FailParseAgent(mockLLM as unknown as LLMConnector);
+
+    // First call: non-JSON → parse fails → retry
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'not json',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+    // Second call (retry): valid JSON → parseOutput succeeds
+    mockLLM.complete.mockResolvedValueOnce({
+      text: '{"value":"success"}',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const result = await failAgent.run('test', makeContext());
+    expect(result).toBe('success');
+
+    // Only 1 fallback audit event (from first failure)
+    const fallbackLogs = failAgent.auditLogs.filter((l) => l.eventType === 'parse_output_fallback');
+    expect(fallbackLogs).toHaveLength(1);
   });
 
   it('run() includes tool_result messages in conversation', async () => {

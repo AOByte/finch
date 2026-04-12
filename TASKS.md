@@ -236,35 +236,35 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 **Goal:** Slack trigger works end-to-end including gate question threading. GitHub connectors work. Jira fetches issue data. Socket.io pushes live run events. Webhook gets HMAC validation. `CredentialEncryptionService` is implemented.
 
-- [ ] **W4-01** — Implement `CredentialEncryptionService` using Node.js `crypto`, AES-256-GCM. Methods: `encrypt(plaintext: string): string` and `decrypt(ciphertext: string): string`. Key read from `ENCRYPTION_KEY` env var (must be 64 hex chars = 32 bytes). Used by all connector services when storing and reading credentials. Per CO-03 in RULES.md.
+- [x] **W4-01** — Implement `CredentialEncryptionService` using Node.js `crypto`, AES-256-GCM. Methods: `encrypt(plaintext: string): string` and `decrypt(ciphertext: string): string`. Key read from `ENCRYPTION_KEY` env var (must be 64 hex chars = 32 bytes). Used by all connector services when storing and reading credentials. Per CO-03 in RULES.md.
 
-- [ ] **W4-02** — Add HMAC-SHA256 validation to `WebhookConnectorService`. Validate `X-Finch-Signature` header against the request body using `WEBHOOK_SECRET` env var. Reject unsigned or incorrectly signed requests with 401.
+- [x] **W4-02** — Add HMAC-SHA256 validation to `WebhookConnectorService`. Validate `X-Finch-Signature` header against the request body using `WEBHOOK_SECRET` env var. Reject unsigned or incorrectly signed requests with 401.
 
-- [ ] **W4-03** — Implement `SlackConnectorService` using `@slack/bolt`. Message filtering rules:
+- [x] **W4-03** — Implement `SlackConnectorService` using `@slack/bolt`. Message filtering rules:
   - Ignore messages where `event.subtype` is set (bot messages, file uploads, join/leave notifications)
   - Only process messages where `event.text` starts with the configured `TRIGGER_PREFIX` (default: `@finch`)
   - For threaded messages: check `thread_ts` against `GateRepository.findOpenGateByThread()` — if a match exists, call `GateControllerService.resolve()` and return without starting a new workflow
   - For non-threaded messages passing the prefix filter: build `RawTriggerInput` and start `finchWorkflow`
   Posts gate questions and Ship notifications as Slack thread replies. Registers itself in `ConnectorRegistryService` on `onModuleInit`. See `docs/SDD.md` `SlackConnectorService` class.
 
-- [ ] **W4-04** — Implement `GitHubAcquireConnectorService` using `@octokit/rest`. Fetches repo metadata, file tree, package manifests, and import graphs for paths relevant to the task. Used by `AcquireAgent` for repo map construction in multi-repo harnesses.
+- [x] **W4-04** — Implement `GitHubAcquireConnectorService` using `@octokit/rest`. Fetches repo metadata, file tree, package manifests, and import graphs for paths relevant to the task. Used by `AcquireAgent` for repo map construction in multi-repo harnesses.
 
-- [ ] **W4-05** — Implement `GitHubExecuteConnectorService`. Clones repo to ephemeral workspace via `simple-git`. Creates feature branch `finch/{planId}`. Applies file edits using these rules:
+- [x] **W4-05** — Implement `GitHubExecuteConnectorService`. Clones repo to ephemeral workspace via `simple-git`. Creates feature branch `finch/{planId}`. Applies file edits using these rules:
   - Use `ts-morph` for structural edits to `.ts`/`.tsx` files (adding imports, modifying function signatures, inserting class members)
   - Use direct file write for all other cases: `.js` files where the change is a full replacement, JSON/YAML/config files, or any non-TypeScript file
   Runs verification commands via `spawn`. `runCommand()` emits `verification_run` and `verification_result` audit events. Cleans up ephemeral workspace in a `finally` block regardless of outcome (CQ-05). See `docs/SDD.md` `GitHubExecuteConnectorService` class.
 
-- [ ] **W4-06** — Implement `GitHubShipConnectorService` using `@octokit/rest`. Opens PR with generated title and body. PR body includes: task link, plan summary, modified files, verification results, `run_id`. In multi-repo runs each PR cross-references sibling PRs in its body.
+- [x] **W4-06** — Implement `GitHubShipConnectorService` using `@octokit/rest`. Opens PR with generated title and body. PR body includes: task link, plan summary, modified files, verification results, `run_id`. In multi-repo runs each PR cross-references sibling PRs in its body.
 
-- [ ] **W4-07** — Implement `JiraConnectorService` using `jira.js`. Given a Jira issue key extracted from the task descriptor, fetches: summary, description, acceptance criteria, issue type, priority, labels, components, sprint, epic, linked issues, subtasks, comments, assignee, reporter.
+- [x] **W4-07** — Implement `JiraConnectorService` using `jira.js`. Given a Jira issue key extracted from the task descriptor, fetches: summary, description, acceptance criteria, issue type, priority, labels, components, sprint, epic, linked issues, subtasks, comments, assignee, reporter.
 
-- [ ] **W4-08** — Implement `GateTimeoutProcessor` as a BullMQ processor on the `gate-timeout` queue. On timeout: sets run to STALLED, re-sends gate question to trigger channel, schedules a 24-hour retry job. Must be idempotent — check `gate.resolvedAt` at the start and return early if already resolved. See `docs/SDD.md` `GateTimeoutProcessor` class.
+- [x] **W4-08** — Implement `GateTimeoutProcessor` as a BullMQ processor on the `gate-timeout` queue. On timeout: sets run to STALLED, re-sends gate question to trigger channel, schedules a 24-hour retry job. Must be idempotent — check `gate.resolvedAt` at the start and return early if already resolved. See `docs/SDD.md` `GateTimeoutProcessor` class.
 
-- [ ] **W4-09** — Implement `RunGateway` Socket.io WebSocket gateway in `WebSocketModule`. Uses Redis adapter. Rooms scoped by `harness:{harnessId}`. Verifies JWT on connection — disconnect unauthenticated clients. `join_harness` message handler checks harness membership before joining the room. See `docs/SDD.md` `RunGateway` class.
+- [x] **W4-09** — Implement `RunGateway` Socket.io WebSocket gateway in `WebSocketModule`. Uses Redis adapter. Rooms scoped by `harness:{harnessId}`. Verifies JWT on connection — disconnect unauthenticated clients. `join_harness` message handler checks harness membership before joining the room. See `docs/SDD.md` `RunGateway` class.
 
-- [ ] **W4-10** — Wire `AuditLoggerService` to publish all events to Redis pub/sub channel `audit-events:{harnessId}` on every write. `RunGateway` subscribes via Redis adapter and emits `run.event` to the correct `harness:{harnessId}` room. See `docs/SDD.md` `AuditLoggerService` publishing section.
+- [x] **W4-10** — Wire `AuditLoggerService` to publish all events to Redis pub/sub channel `audit-events:{harnessId}` on every write. `RunGateway` subscribes via Redis adapter and emits `run.event` to the correct `harness:{harnessId}` room. See `docs/SDD.md` `AuditLoggerService` publishing section.
 
-- [ ] **W4-11** — End-to-end verification: `POST /api/trigger/default` starts a run. A `wscat` client connected to the Socket.io gateway and joined to `harness:default` receives `run.event` messages for each phase transition in real time. GitHub Ship creates a real PR on a test repository.
+- [x] **W4-11** — End-to-end verification: `POST /api/trigger/default` starts a run. A `wscat` client connected to the Socket.io gateway and joined to `harness:default` receives `run.event` messages for each phase transition in real time. GitHub Ship creates a real PR on a test repository.
 
 **Wave 4 complete when:** Slack trigger starts a run, Socket.io delivers live phase transition events to connected clients, and GitHub Ship opens a real PR.
 

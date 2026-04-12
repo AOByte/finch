@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AcquireAgentService } from '../../src/agents/acquire-agent.service';
 import { GateEvent } from '../../src/agents/gate-event';
+import { ParseOutputError } from '../../src/agents/errors';
 
 describe('AcquireAgentService', () => {
   const mockAuditLogger = { log: vi.fn().mockResolvedValue(undefined) };
@@ -60,13 +61,21 @@ describe('AcquireAgentService', () => {
     expect(result.files).toEqual(['a.ts']);
   });
 
-  it('parseOutput handles invalid JSON', () => {
-    const result = service.parseOutput({
+  it('parseOutput throws ParseOutputError on invalid JSON', () => {
+    expect(() => service.parseOutput({
+      text: 'not json', content: [], toolUses: [],
+      usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
+    })).toThrow(ParseOutputError);
+  });
+
+  it('parseFallback returns empty context object', () => {
+    const result = service.parseFallback({
       text: 'not json', content: [], toolUses: [],
       usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });
     expect(result.hasGap).toBe(false);
     expect(result.files).toEqual([]);
+    expect(result.dependencies).toEqual([]);
   });
 
   it('executeToolCall returns error', async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ExecuteAgentService } from '../../src/agents/execute-agent.service';
 import { GateEvent } from '../../src/agents/gate-event';
+import { ParseOutputError } from '../../src/agents/errors';
 
 describe('ExecuteAgentService', () => {
   const mockAuditLogger = { log: vi.fn().mockResolvedValue(undefined) };
@@ -58,12 +59,19 @@ describe('ExecuteAgentService', () => {
     expect(result.results).toEqual(['ok']);
   });
 
-  it('parseOutput handles invalid JSON', () => {
-    const result = service.parseOutput({
+  it('parseOutput throws ParseOutputError on invalid JSON', () => {
+    expect(() => service.parseOutput({
+      text: 'plain text', content: [], toolUses: [],
+      usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
+    })).toThrow(ParseOutputError);
+  });
+
+  it('parseFallback returns report with allPassing=false (W4-00b safety)', () => {
+    const result = service.parseFallback({
       text: 'plain text', content: [], toolUses: [],
       usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });
-    expect(result.allPassing).toBe(true);
+    expect(result.allPassing).toBe(false);
     expect(result.results).toEqual(['plain text']);
   });
 

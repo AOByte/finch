@@ -9,6 +9,7 @@ import { LLMModule } from '../llm/llm.module';
 import { GateControllerService } from './gate-controller.service';
 import { AgentDispatcherService } from './agent-dispatcher.service';
 import { RuleEnforcementService } from './rule-enforcement.service';
+import { GateTimeoutProcessor } from './gate-timeout.processor';
 
 @Module({
   imports: [
@@ -20,7 +21,7 @@ import { RuleEnforcementService } from './rule-enforcement.service';
     LLMModule,
     BullModule.registerQueue({ name: 'gate-timeout' }),
   ],
-  providers: [GateControllerService, AgentDispatcherService, RuleEnforcementService],
-  exports: [GateControllerService, AgentDispatcherService, RuleEnforcementService],
+  providers: [GateControllerService, AgentDispatcherService, RuleEnforcementService, GateTimeoutProcessor],
+  exports: [GateControllerService, AgentDispatcherService, RuleEnforcementService, GateTimeoutProcessor],
 })
 export class OrchestratorModule {}

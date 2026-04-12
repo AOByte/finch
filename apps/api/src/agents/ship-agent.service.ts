@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseAgent } from './base-agent';
 import { GateEvent } from './gate-event';
+import { ParseOutputError } from './errors';
 import type {
   LLMConnector,
   LLMResponse,
@@ -63,14 +64,19 @@ export class ShipAgentService extends BaseAgent<ShipInput, ShipResult> {
 
   parseOutput(response: LLMResponse): ShipResult {
     try {
-      const parsed = JSON.parse(response.text);
-      return parsed as ShipResult;
-    } catch {
-      return {
-        repoId: '',
-        commitSha: 'stub-sha',
-      };
+      return JSON.parse(response.text) as ShipResult;
+    } catch (err) {
+      throw new ParseOutputError(
+        `ShipAgent failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
+  }
+
+  parseFallback(_response: LLMResponse): ShipResult {
+    return {
+      repoId: '',
+      commitSha: 'stub-sha',
+    };
   }
 
   async executeToolCall(

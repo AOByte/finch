@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/persistence/prisma.service';
@@ -6,12 +6,42 @@ import { TemporalWorkerService } from '../../src/workflow/temporal-worker.servic
 import { WorkflowClient } from '@temporalio/client';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
+// Mock ioredis to prevent BullMQ from connecting to Redis
+vi.mock('ioredis', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { EventEmitter } = require('events');
+  class MockRedis extends EventEmitter {
+    status = 'ready';
+    connect() { return Promise.resolve(); }
+    disconnect() { return Promise.resolve(); }
+    quit() { return Promise.resolve('OK'); }
+    subscribe() { return Promise.resolve(); }
+    duplicate() { return new MockRedis(); }
+    defineCommand() { /* no-op */ }
+    options = {};
+  }
+  return { default: MockRedis, Redis: MockRedis };
+});
+
+// Mock redis to prevent REDIS_PUBLISHER factory from connecting
+vi.mock('redis', () => ({
+  createClient: vi.fn().mockReturnValue({
+    connect: vi.fn().mockResolvedValue(undefined),
+    publish: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+  }),
+}));
 
 const mockPrisma = {
   $connect: vi.fn(),
   $disconnect: vi.fn(),
   run: { findUnique: vi.fn() },
 };
+
+beforeAll(() => {
+  process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+});
 
 describe('AppModule', () => {
   const origEnv = process.env.NODE_ENV;
