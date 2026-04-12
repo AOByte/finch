@@ -1,4 +1,8 @@
-# Testing Finch Infrastructure
+# Finch Infrastructure & Dev Environment Setup
+
+## What This Skill Covers
+
+Setting up and verifying the Finch development infrastructure: Docker Compose services (PostgreSQL with pgvector, Redis, Temporal Server + UI), database migrations, seed data, dev servers, and TypeScript compilation. This is the foundation all other testing depends on.
 
 ## Prerequisites
 
@@ -10,6 +14,9 @@
 ```bash
 docker compose -f infra/docker-compose.yml up -d
 bash infra/healthcheck.sh  # must exit 0
+
+export DATABASE_URL=postgresql://finch:finch@localhost:5432/finch
+pnpm --filter api prisma generate
 pnpm --filter api prisma migrate deploy
 pnpm --filter api prisma db seed
 ```
@@ -45,7 +52,7 @@ ss -tlnp | grep -E '300[0-3]'
 docker exec finch-postgres psql -U finch -d finch -c "SELECT extname FROM pg_extension WHERE extname = 'vector';"
 # Expected: 1 row
 
-# Audit rules
+# Audit rules (immutable audit_events table)
 docker exec finch-postgres psql -U finch -d finch -c "SELECT rulename FROM pg_rules WHERE tablename = 'audit_events';"
 # Expected: no_audit_update, no_audit_delete
 
@@ -62,28 +69,31 @@ pnpm --filter api exec tsc --noEmit   # must exit 0
 pnpm --filter web exec tsc --noEmit   # must exit 0
 ```
 
-## Known Gotchas
-
-- **Temporal auto-setup image** (`temporalio/auto-setup`): Requires `DB=postgres12` (not `postgresql`) and `DB_PORT=5432` (defaults to MySQL's 3306). Without these, the server loops on "Waiting for PostgreSQL to startup" even though PostgreSQL is healthy.
-- **Temporal UI version**: Tag `2.26` doesn't exist on Docker Hub. Use `2.31.2` or latest available.
-- **Prisma version**: Using v5 (not v7) for NestJS 10 compatibility. v7 removed `url` from datasource block.
-- **Pino logger**: API logs include `"service": "finch-api"` via `customProps` in `app.module.ts`. Logs may appear as binary when grepping — use `strings` to extract text.
-- **Port conflicts**: When restarting dev servers, old Node processes may hold ports. Use `ss -tlnp` to diagnose and `kill -9 <pid>` to clear.
-
 ## Docker Services
 
-| Container | Port | Image |
-|-----------|------|-------|
-| finch-postgres | 5432 | pgvector/pgvector:pg16 |
-| finch-redis | 6379 | redis:7-alpine |
-| finch-temporal | 7233 | temporalio/auto-setup:1.24 |
-| finch-temporal-ui | 8080 | temporalio/ui:2.31.2 |
+| Container | Port | Image | Purpose |
+|-----------|------|-------|---------|
+| finch-postgres | 5432 | pgvector/pgvector:pg16 | Primary database with vector extension |
+| finch-redis | 6379 | redis:7-alpine | BullMQ job queue (audit, gate timeout) |
+| finch-temporal | 7233 | temporalio/auto-setup:1.24 | Workflow orchestration server |
+| finch-temporal-ui | 8080 | temporalio/ui:2.31.2 | Temporal web dashboard |
+
+## Known Gotchas
+
+- **Temporal auto-setup image**: Requires `DB=postgres12` (not `postgresql`) and `DB_PORT=5432` (defaults to MySQL's 3306). Without these, the server loops on "Waiting for PostgreSQL to startup" even though PostgreSQL is healthy.
+- **Temporal UI version**: Tag `2.26` doesn't exist on Docker Hub. Use `2.31.2` or latest available.
+- **Prisma version**: Using v5 (not v7) for NestJS 10 compatibility. v7 removed `url` from datasource block.
+- **Prisma generate required**: Must run `prisma generate` before any test or build step. Without it, the `.prisma/client/default` module is missing.
+- **Pino logger**: API logs include `"service": "finch-api"` via `customProps` in `app.module.ts`. Logs may appear as binary when grepping — use `strings` to extract text.
+- **Port conflicts**: When restarting dev servers, old Node processes may hold ports. Use `ss -tlnp` to diagnose and `kill -9 <pid>` to clear.
+- **Default harness UUID**: `00000000-0000-0000-0000-000000000001` — well-known ID used across all tests and seed data.
 
 ## Credentials
 
 - PostgreSQL: `finch`/`finch`/`finch` (user/password/database)
 - Seed user: `admin@finch.local` / `finch-dev-password`
+- `ANTHROPIC_API_KEY` — permanent Devin secret for real LLM calls
 
-## Devin Secrets Needed
+## Secrets
 
-No external secrets required — all credentials are local dev defaults.
+No external secrets required for infrastructure setup — all credentials are local Docker defaults. `ANTHROPIC_API_KEY` is only needed when running the API server with real LLM calls.
