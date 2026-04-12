@@ -12,7 +12,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 **Goal:** a running skeleton. No business logic. Everything compiles, infrastructure comes up, NestJS starts, migrations apply cleanly.
 
-- [ ] **W1-01** — Initialise pnpm monorepo. Create `apps/api`, `apps/web`, `packages/types`. Configure `pnpm-workspace.yaml`. Set `"node": ">=20"` in root `package.json` engines field. Add `.nvmrc` with `20`.
+- [x] **W1-01** — Initialise pnpm monorepo. Create `apps/api`, `apps/web`, `packages/types`. Configure `pnpm-workspace.yaml`. Set `"node": ">=20"` in root `package.json` engines field. Add `.nvmrc` with `20`.
 
 - [ ] **W1-02** — Create `infra/docker-compose.yml` with the following services, all using `finch-` prefix, Postgres credentials `finch/finch/finch`:
   - `finch-postgres` — `pgvector/pgvector:pg16`, port 5432, named volume `finch_postgres_data`
