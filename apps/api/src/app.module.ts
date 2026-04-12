@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { LoggerModule } from 'nestjs-pino';
 import { OrchestratorModule } from './orchestrator/orchestrator.module';
 import { WorkflowModule } from './workflow/workflow.module';
 import { AgentModule } from './agents/agent.module';
@@ -15,6 +16,20 @@ import { ApiModule } from './api/api.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    LoggerModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => ({
+        pinoHttp: {
+          level: config.get<string>('LOG_LEVEL', 'info'),
+          transport:
+            process.env.NODE_ENV !== 'production'
+              ? { target: 'pino-pretty', options: { colorize: true } }
+              : undefined,
+          customProps: () => ({ service: 'finch-api' }),
+        },
+      }),
+    }),
     OrchestratorModule,
     WorkflowModule,
     AgentModule,
