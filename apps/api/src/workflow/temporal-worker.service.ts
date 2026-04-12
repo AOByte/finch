@@ -220,7 +220,7 @@ export class TemporalWorkerService implements OnModuleInit {
         const agentContext = this.buildAgentContext(_plan.runId, _context.harnessId, 'SHIP', source);
         const result = await this.shipAgent.runShip(_plan, _report, _context, repoId, agentContext);
         if (result instanceof GateEvent) {
-          return { repoId, commitSha: 'gate-fired' };
+          throw new Error('ShipAgent returned GateEvent — this violates FF-06');
         }
         return result;
       },

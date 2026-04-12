@@ -7,6 +7,7 @@ import { AuditLoggerService } from '../audit/audit-logger.service';
 import { LLMRegistryService } from '../llm/llm-registry.service';
 import { MemoryConnectorService } from '../memory/memory-connector.service';
 import { GateEvent } from '../agents/gate-event';
+import { ForcedGateError } from '../agents/errors';
 import type {
   Phase,
   AgentStepConfig,
@@ -171,6 +172,16 @@ export class AgentDispatcherService {
       }
 
       const result = await runner(currentArtifact, context);
+
+      // Belt-and-suspenders: if an agent somehow returns a GateEvent in a
+      // gate-free phase (TRIGGER / SHIP), throw ForcedGateError (FC-01/FC-07).
+      if (result instanceof GateEvent &&
+          (phase === 'TRIGGER' || phase === 'SHIP')) {
+        throw new ForcedGateError(
+          `Agent returned GateEvent in gate-free phase ${phase} (FC-01/FC-07). ` +
+          `AgentId: ${result.agentId}, RunId: ${runId}.`,
+        );
+      }
 
       // If agent fired a gate, build snapshot and return
       if (result instanceof GateEvent) {

@@ -115,17 +115,29 @@ describe('ShipAgentService', () => {
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_completed' }));
   });
 
-  it('runShip returns GateEvent gracefully', async () => {
-    mockLLM.complete.mockResolvedValue({
+  it('runShip blocks fire_gate in SHIP phase (FC-07) and continues', async () => {
+    // First call: fire_gate in SHIP → blocked by BaseAgent guard
+    mockLLM.complete.mockResolvedValueOnce({
       text: '', content: [], stopReason: 'tool_use',
       toolUses: [{ id: 't1', name: 'fire_gate', input: { gapDescription: 'gap', question: 'q' } }],
       usage: { inputTokens: 10, outputTokens: 5 },
+    });
+    // Second call: agent continues with end_turn after gate is blocked
+    mockLLM.complete.mockResolvedValueOnce({
+      text: JSON.stringify({ repoId: 'repo1', commitSha: 'abc123' }),
+      content: [], toolUses: [], usage: { inputTokens: 10, outputTokens: 5 }, stopReason: 'end_turn',
     });
 
     const plan = { runId: 'r1', hasGap: false, steps: [] };
     const report = { runId: 'r1', hasGap: false, allPassing: true, results: [] };
     const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
     const result = await service.runShip(plan, report, context, 'repo1', makeContext() as never);
-    expect(result).toBeInstanceOf(GateEvent);
+    // Gate is blocked — result is a ShipResult, not a GateEvent
+    expect(result).not.toBeInstanceOf(GateEvent);
+    expect((result as { repoId: string }).repoId).toBe('repo1');
+    // Verify agent_anomaly audit event was emitted
+    expect(mockAuditLogger.log).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'agent_anomaly' }),
+    );
   });
 });

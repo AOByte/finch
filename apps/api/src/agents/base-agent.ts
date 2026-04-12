@@ -88,6 +88,32 @@ export abstract class BaseAgent<TInput, TOutput> {
       if (response.stopReason === 'tool_use') {
         for (const toolUse of response.toolUses) {
           if (toolUse.name === 'fire_gate') {
+            // FC-01 / FC-07: TRIGGER and SHIP phases must never gate.
+            // An LLM hallucination should not cause data loss.
+            if (params.context.phase === 'TRIGGER' || params.context.phase === 'SHIP') {
+              await this.auditLog({
+                runId: params.context.runId,
+                harnessId: params.context.harnessId,
+                phase: params.context.phase,
+                eventType: 'agent_anomaly',
+                actor: { agentId: params.context.agentConfig.agentId },
+                payload: {
+                  anomalyType: 'fire_gate_in_gate_free_phase',
+                  phase: params.context.phase,
+                  gapDescription: toolUse.input['gapDescription'],
+                  question: toolUse.input['question'],
+                },
+              });
+
+              // Inject a tool result so the LLM conversation can continue
+              messages.push({
+                role: 'user',
+                content: [{ type: 'tool_result', toolUseId: toolUse.id,
+                  content: 'Gate not permitted in this phase. Continue without gating.' }],
+              });
+              continue; // do NOT return GateEvent
+            }
+
             // fire_gate RETURNS a GateEvent — does NOT throw
             return new GateEvent({
               phase: params.context.phase,

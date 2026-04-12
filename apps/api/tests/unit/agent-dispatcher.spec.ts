@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AgentDispatcherService } from '../../src/orchestrator/agent-dispatcher.service';
 import { GateEvent } from '../../src/agents/gate-event';
+import { ForcedGateError } from '../../src/agents/errors';
 
 describe('AgentDispatcherService', () => {
   const mockRunRepository = {
@@ -271,6 +272,36 @@ describe('AgentDispatcherService', () => {
     });
     expect(result).toEqual({ done: true });
     expect(mockRunRepository.updatePipelinePosition).toHaveBeenCalledWith('r1', 'TRIGGER', 0, {});
+  });
+
+  it('dispatchPhase throws ForcedGateError when agent returns GateEvent in TRIGGER phase', async () => {
+    const gateEvent = new GateEvent({
+      phase: 'TRIGGER', runId: 'r1', harnessId: 'h1',
+      gapDescription: 'gap', question: 'q?', source: makeSource() as never,
+      agentId: 'a1', pipelinePosition: 0,
+    });
+    service.registerPhaseRunner('TRIGGER', vi.fn().mockResolvedValue(gateEvent));
+    mockAgentConfigService.getPipeline.mockResolvedValue({
+      phase: 'TRIGGER', harnessId: 'h1', agents: [makeAgent('a1', 0)],
+    });
+    await expect(service.dispatchPhase({
+      runId: 'r1', harnessId: 'h1', phase: 'TRIGGER', input: {}, source: makeSource(),
+    })).rejects.toThrow(ForcedGateError);
+  });
+
+  it('dispatchPhase throws ForcedGateError when agent returns GateEvent in SHIP phase', async () => {
+    const gateEvent = new GateEvent({
+      phase: 'SHIP', runId: 'r1', harnessId: 'h1',
+      gapDescription: 'gap', question: 'q?', source: makeSource() as never,
+      agentId: 'a1', pipelinePosition: 0,
+    });
+    service.registerPhaseRunner('SHIP', vi.fn().mockResolvedValue(gateEvent));
+    mockAgentConfigService.getPipeline.mockResolvedValue({
+      phase: 'SHIP', harnessId: 'h1', agents: [makeAgent('a1', 0)],
+    });
+    await expect(service.dispatchPhase({
+      runId: 'r1', harnessId: 'h1', phase: 'SHIP', input: {}, source: makeSource(),
+    })).rejects.toThrow(ForcedGateError);
   });
 
   it('buildSnapshot includes persisted artifacts and skips nulls', async () => {

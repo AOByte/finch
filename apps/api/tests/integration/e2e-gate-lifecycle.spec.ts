@@ -2122,42 +2122,58 @@ describe('Scenario 33: Memory merge after Ship phase', () => {
   });
 });
 
-// ─── Scenario 34: Gate in TRIGGER/SHIP — graceful handling ───────────────────
+// ─── Scenario 34: Gate in TRIGGER/SHIP — blocked by BaseAgent (FC-01/FC-07) ──
 
-describe('Scenario 34: Gate in TRIGGER/SHIP — graceful handling at activity level', () => {
-  it('trigger agent CAN return GateEvent but workflow activity handles it gracefully', async () => {
+describe('Scenario 34: Gate in TRIGGER/SHIP — blocked by BaseAgent guard', () => {
+  it('trigger agent blocks fire_gate in TRIGGER phase, emits agent_anomaly, and continues', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
 
-    // Trigger agent fires gate (shouldn't happen but technically possible)
+    // First LLM call: fire_gate in TRIGGER → blocked by BaseAgent guard
     mockLLM.enqueueGate('Task is unclear', 'What do you want?');
-    const triggerCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
+    // Second LLM call: agent continues with end_turn after gate is blocked
+    mockLLM.enqueueJson({
+      runId,
+      harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'do something',
+      intent: 'unknown',
+      scope: [],
+    });
 
+    const triggerCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
     const result = await triggerAgent.runTrigger(
       { rawText: 'do something', source, harnessId: WELL_KNOWN_HARNESS_ID, runId },
       triggerCtx,
     );
 
-    // The agent returns a GateEvent
-    expect(result).toBeInstanceOf(GateEvent);
-    const gate = result as GateEvent;
-    expect(gate.phase).toBe('TRIGGER');
+    // BaseAgent blocks the gate — no GateEvent returned
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const descriptor = result as TaskDescriptor;
+    expect(descriptor.normalizedPrompt).toBe('do something');
 
-    // The temporal worker's runTriggerPhase activity would handle this
-    // by returning a fallback TaskDescriptor (line 98-107 of temporal-worker.service.ts)
-    // Verify the gate has the expected shape even from TRIGGER phase
-    expect(gate.runId).toBe(runId);
-    expect(gate.question).toBe('What do you want?');
+    // Verify agent_anomaly audit event was emitted
+    const anomalyJobs = mockQueue.jobs.filter(
+      (j: { data: { eventType: string } }) => j.data.eventType === 'agent_anomaly',
+    );
+    expect(anomalyJobs.length).toBeGreaterThanOrEqual(1);
+    expect(anomalyJobs[0].data.payload.anomalyType).toBe('fire_gate_in_gate_free_phase');
+    expect(anomalyJobs[0].data.payload.phase).toBe('TRIGGER');
   });
 
-  it('ship agent CAN return GateEvent but workflow activity handles it gracefully', async () => {
+  it('ship agent blocks fire_gate in SHIP phase, emits agent_anomaly, and continues', async () => {
     const runId = uuidv4();
     await createTestRun(runId);
     const source = buildSource(runId);
 
-    // Ship agent fires gate
+    // First LLM call: fire_gate in SHIP → blocked by BaseAgent guard
     mockLLM.enqueueGate('Cannot ship without approval', 'Is this approved for production?');
+    // Second LLM call: agent continues with end_turn after gate is blocked
+    mockLLM.enqueueJson({
+      repoId: 'default-repo',
+      commitSha: 'abc123',
+    });
+
     const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
     const plan: PlanArtifact = { runId, hasGap: false, steps: ['Deploy'] };
     const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
@@ -2168,15 +2184,21 @@ describe('Scenario 34: Gate in TRIGGER/SHIP — graceful handling at activity le
 
     const result = await shipAgent.runShip(plan, report, context, 'default-repo', shipCtx);
 
-    // ShipAgent returns GateEvent (line 121-123 of ship-agent.service.ts)
-    expect(result).toBeInstanceOf(GateEvent);
-    const gate = result as GateEvent;
-    expect(gate.phase).toBe('SHIP');
+    // BaseAgent blocks the gate — no GateEvent returned
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const shipResult = result as { repoId: string; commitSha: string };
+    expect(shipResult.repoId).toBe('default-repo');
 
-    // The temporal worker's runShipPhase activity handles this
-    // by returning { repoId, commitSha: 'gate-fired' } (line 222-224)
-    // SHIP has NO gate loop in the workflow, so the gate would be silently lost
-    expect(gate.question).toBe('Is this approved for production?');
+    // Verify agent_anomaly audit event was emitted
+    const anomalyJobs = mockQueue.jobs.filter(
+      (j: { data: { eventType: string } }) => j.data.eventType === 'agent_anomaly',
+    );
+    expect(anomalyJobs.length).toBeGreaterThanOrEqual(1);
+    const shipAnomaly = anomalyJobs.find(
+      (j: { data: { payload: { phase: string } } }) => j.data.payload.phase === 'SHIP',
+    );
+    expect(shipAnomaly).toBeDefined();
+    expect(shipAnomaly.data.payload.anomalyType).toBe('fire_gate_in_gate_free_phase');
   });
 });
 

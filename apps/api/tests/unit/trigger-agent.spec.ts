@@ -81,15 +81,27 @@ describe('TriggerAgentService', () => {
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_completed' }));
   });
 
-  it('runTrigger handles GateEvent from base agent', async () => {
-    mockLLM.complete.mockResolvedValue({
+  it('runTrigger blocks fire_gate in TRIGGER phase (FC-01) and continues', async () => {
+    // First call: fire_gate in TRIGGER → blocked by BaseAgent guard
+    mockLLM.complete.mockResolvedValueOnce({
       text: '', content: [], stopReason: 'tool_use',
       toolUses: [{ id: 't1', name: 'fire_gate', input: { gapDescription: 'gap', question: 'q' } }],
       usage: { inputTokens: 10, outputTokens: 5 },
     });
+    // Second call: agent continues with end_turn after gate is blocked
+    mockLLM.complete.mockResolvedValueOnce({
+      text: JSON.stringify({ normalizedPrompt: 'vague task', intent: 'unknown', scope: [] }),
+      content: [], toolUses: [], usage: { inputTokens: 10, outputTokens: 5 }, stopReason: 'end_turn',
+    });
 
     const input = { rawText: 'vague task', harnessId: 'h1', runId: 'r1', source: {} as never };
     const result = await service.runTrigger(input, makeContext() as never);
-    expect(result).toBeInstanceOf(GateEvent);
+    // Gate is blocked — result is a TaskDescriptor, not a GateEvent
+    expect(result).not.toBeInstanceOf(GateEvent);
+    expect((result as { normalizedPrompt: string }).normalizedPrompt).toBe('vague task');
+    // Verify agent_anomaly audit event was emitted
+    expect(mockAuditLogger.log).toHaveBeenCalledWith(
+      expect.objectContaining({ eventType: 'agent_anomaly' }),
+    );
   });
 });

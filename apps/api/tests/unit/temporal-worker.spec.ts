@@ -305,7 +305,7 @@ describe('TemporalWorkerService', () => {
       expect(result.commitSha).toBe('abc123');
     });
 
-    it('runShipPhase handles GateEvent gracefully', async () => {
+    it('runShipPhase throws when ShipAgent returns GateEvent (FF-06)', async () => {
       mockShipAgent.runShip.mockResolvedValue(
         new GateEvent({
           phase: 'SHIP', runId: 'r1', harnessId: 'h1',
@@ -318,8 +318,8 @@ describe('TemporalWorkerService', () => {
       const plan = { runId: 'r1', hasGap: false, steps: [] };
       const report = { runId: 'r1', hasGap: false, allPassing: true, results: [] };
       const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
-      const result = await activities.runShipPhase(plan, report, context, 'repo1');
-      expect(result.commitSha).toBe('gate-fired');
+      await expect(activities.runShipPhase(plan, report, context, 'repo1'))
+        .rejects.toThrow('ShipAgent returned GateEvent — this violates FF-06');
     });
 
     it('aggregateShipResults calls markCompleted', async () => {
