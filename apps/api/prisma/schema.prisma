@@ -1,0 +1,236 @@
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  extensions = [vector, pgcrypto]
+}
+
+// --- Auth tables ---
+
+model User {
+  userId       String            @id @default(dbgenerated("gen_random_uuid()")) @map("user_id") @db.Uuid
+  email        String            @unique
+  passwordHash String            @map("password_hash")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  memberships  HarnessMember[]
+
+  @@map("users")
+}
+
+model HarnessMember {
+  userId    String  @map("user_id") @db.Uuid
+  harnessId String  @map("harness_id") @db.Uuid
+  user      User    @relation(fields: [userId], references: [userId])
+  harness   Harness @relation(fields: [harnessId], references: [harnessId])
+
+  @@id([userId, harnessId])
+  @@map("harness_members")
+}
+
+// --- Core tables ---
+
+model Harness {
+  harnessId    String            @id @default(dbgenerated("gen_random_uuid()")) @map("harness_id") @db.Uuid
+  name         String
+  config       Json              @default("{}")
+  createdAt    DateTime          @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt    DateTime          @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  runs         Run[]
+  gateEvents   GateEvent[]
+  connectors   Connector[]
+  agentConfigs AgentConfig[]
+  skills       Skill[]
+  rules        Rule[]
+  memoryRecords MemoryRecord[]
+  memoryStagings MemoryStaging[]
+  members      HarnessMember[]
+
+  @@map("harnesses")
+}
+
+model Run {
+  runId              String          @id @map("run_id") @db.Uuid
+  harnessId          String          @map("harness_id") @db.Uuid
+  temporalWorkflowId String          @map("temporal_workflow_id")
+  status             String
+  currentPhase       String          @map("current_phase")
+  pipelinePosition   Int?            @map("pipeline_position")
+  pipelineArtifact   Json?           @map("pipeline_artifact")
+  failureReason      String?         @map("failure_reason")
+  failureDetail      String?         @map("failure_detail")
+  startedAt          DateTime        @default(now()) @map("started_at") @db.Timestamptz()
+  completedAt        DateTime?       @map("completed_at") @db.Timestamptz()
+  updatedAt          DateTime        @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  harness            Harness         @relation(fields: [harnessId], references: [harnessId])
+  phaseArtifacts     PhaseArtifact[]
+  gateEvents         GateEvent[]
+  memoryStagings     MemoryStaging[]
+
+  @@index([harnessId, status], map: "runs_harness_status")
+  @@index([harnessId, startedAt(sort: Desc)], map: "runs_harness_started")
+  @@index([harnessId, currentPhase], map: "runs_harness_phase")
+  @@map("runs")
+}
+
+model PhaseArtifact {
+  artifactId   String   @id @default(dbgenerated("gen_random_uuid()")) @map("artifact_id") @db.Uuid
+  runId        String   @map("run_id") @db.Uuid
+  phase        String
+  artifactType String   @map("artifact_type")
+  content      Json
+  version      Int      @default(1)
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  run          Run      @relation(fields: [runId], references: [runId])
+
+  @@index([runId, phase], map: "phase_artifacts_run_phase")
+  @@map("phase_artifacts")
+}
+
+model GateEvent {
+  gateId             String    @id @default(dbgenerated("gen_random_uuid()")) @map("gate_id") @db.Uuid
+  runId              String    @map("run_id") @db.Uuid
+  harnessId          String    @map("harness_id") @db.Uuid
+  phase              String
+  agentId            String    @map("agent_id")
+  pipelinePosition   Int       @map("pipeline_position")
+  firedAt            DateTime  @default(now()) @map("fired_at") @db.Timestamptz()
+  gapDescription     String    @map("gap_description")
+  question           String
+  source             Json
+  snapshot           Json
+  temporalWorkflowId String    @map("temporal_workflow_id")
+  timeoutMs          BigInt    @default(172800000) @map("timeout_ms")
+  resolvedAt         DateTime? @map("resolved_at") @db.Timestamptz()
+  resolution         Json?
+  run                Run       @relation(fields: [runId], references: [runId])
+  harness            Harness   @relation(fields: [harnessId], references: [harnessId])
+
+  @@index([runId], map: "gate_events_run")
+  @@map("gate_events")
+}
+
+model AuditEvent {
+  eventId   String   @id @default(dbgenerated("gen_random_uuid()")) @map("event_id") @db.Uuid
+  runId     String?  @map("run_id") @db.Uuid
+  harnessId String?  @map("harness_id") @db.Uuid
+  phase     String?
+  eventType String   @map("event_type")
+  actor     Json
+  payload   Json
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([runId, createdAt], map: "audit_events_run")
+  @@index([harnessId, createdAt(sort: Desc)], map: "audit_events_harness")
+  @@map("audit_events")
+}
+
+model Connector {
+  connectorId    String   @id @default(dbgenerated("gen_random_uuid()")) @map("connector_id") @db.Uuid
+  harnessId      String   @map("harness_id") @db.Uuid
+  connectorType  String   @map("connector_type")
+  category       String
+  configEncrypted String  @map("config_encrypted")
+  isActive       Boolean  @default(true) @map("is_active")
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  harness        Harness  @relation(fields: [harnessId], references: [harnessId])
+
+  @@map("connectors")
+}
+
+model AgentConfig {
+  agentConfigId  String  @id @default(dbgenerated("gen_random_uuid()")) @map("agent_config_id") @db.Uuid
+  harnessId      String  @map("harness_id") @db.Uuid
+  phase          String
+  position       Int
+  agentId        String  @map("agent_id")
+  llmConnectorId String  @map("llm_connector_id")
+  model          String
+  maxTokens      Int     @default(4096) @map("max_tokens")
+  systemPromptBody String @default("") @map("system_prompt_body")
+  skills         Json    @default("[]")
+  rules          Json    @default("[]")
+  isActive       Boolean @default(true) @map("is_active")
+  harness        Harness @relation(fields: [harnessId], references: [harnessId])
+
+  @@map("agent_configs")
+}
+
+model Skill {
+  skillId         String   @id @default(dbgenerated("gen_random_uuid()")) @map("skill_id") @db.Uuid
+  harnessId       String   @map("harness_id") @db.Uuid
+  name            String
+  description     String
+  applicablePhases String[] @map("applicable_phases")
+  content         String
+  version         Int      @default(1)
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  harness         Harness  @relation(fields: [harnessId], references: [harnessId])
+
+  @@map("skills")
+}
+
+model Rule {
+  ruleId          String   @id @default(dbgenerated("gen_random_uuid()")) @map("rule_id") @db.Uuid
+  harnessId       String   @map("harness_id") @db.Uuid
+  name            String
+  applicablePhases String[] @map("applicable_phases")
+  constraintText  String   @map("constraint_text")
+  enforcement     String
+  patternType     String   @map("pattern_type")
+  patterns        String[] @default([])
+  isActive        Boolean  @default(true) @map("is_active")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  harness         Harness  @relation(fields: [harnessId], references: [harnessId])
+
+  @@map("rules")
+}
+
+enum MemoryType {
+  TaskPattern
+  FileConvention
+  TeamConvention
+  GatePattern
+  RiskSignal
+  RepoMap
+
+  @@map("memory_type")
+}
+
+model MemoryRecord {
+  memoryId      String                       @id @default(dbgenerated("gen_random_uuid()")) @map("memory_id") @db.Uuid
+  harnessId     String                       @map("harness_id") @db.Uuid
+  type          MemoryType
+  content       String
+  embedding     Unsupported("vector(1536)")
+  sourceRunId   String?                      @map("source_run_id") @db.Uuid
+  relevanceTags String[]                     @default([]) @map("relevance_tags")
+  contentHash   String                       @map("content_hash")
+  createdAt     DateTime                     @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt     DateTime                     @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  harness       Harness                      @relation(fields: [harnessId], references: [harnessId])
+
+  @@unique([harnessId, contentHash], map: "memory_records_harness_content_hash")
+  @@map("memory_records")
+}
+
+model MemoryStaging {
+  stagingId     String                       @id @default(dbgenerated("gen_random_uuid()")) @map("staging_id") @db.Uuid
+  runId         String                       @map("run_id") @db.Uuid
+  harnessId     String                       @map("harness_id") @db.Uuid
+  type          MemoryType
+  content       String
+  embedding     Unsupported("vector(1536)")
+  relevanceTags String[]                     @default([]) @map("relevance_tags")
+  contentHash   String                       @map("content_hash")
+  createdAt     DateTime                     @default(now()) @map("created_at") @db.Timestamptz()
+  run           Run                          @relation(fields: [runId], references: [runId])
+  harness       Harness                      @relation(fields: [harnessId], references: [harnessId])
+
+  @@index([runId], map: "memory_staging_run")
+  @@map("memory_staging")
+}

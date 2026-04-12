@@ -27,7 +27,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 - [x] **W1-05** — Create all NestJS module stub files per the module tree in AGENTS.md section 7. Each file must exist, export its module class, and be imported into `AppModule`. No logic in any module yet — stubs only. Modules required: `OrchestratorModule`, `WorkflowModule`, `AgentModule`, `ConnectorModule`, `LLMModule`, `MemoryModule`, `AuditModule`, `PersistenceModule`, `WebSocketModule`, `AuthModule`, `ApiModule`. Verify: `pnpm --filter api exec tsc --noEmit` passes with all modules wired.
 
-- [ ] **W1-06** — Write the Prisma schema at `apps/api/prisma/schema.prisma`. Include the pgvector extension declaration (`datasource` block must reference the `vector` extension). Include all tables from `docs/SDD.md` section 15.1 plus the following auth tables:
+- [x] **W1-06** — Write the Prisma schema at `apps/api/prisma/schema.prisma`. Include the pgvector extension declaration (`datasource` block must reference the `vector` extension). Include all tables from `docs/SDD.md` section 15.1 plus the following auth tables:
 
   **Auth tables (required for W6-01):**
   - `users` — `user_id UUID PK`, `email TEXT UNIQUE NOT NULL`, `password_hash TEXT NOT NULL`, `created_at TIMESTAMPTZ`
