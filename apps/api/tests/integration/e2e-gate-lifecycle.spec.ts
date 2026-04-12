@@ -1206,14 +1206,14 @@ describe('Scenario 15: Ship agent stage_memory tool call', () => {
           type: 'tool_use',
           id: 'tu-stage',
           name: 'stage_memory',
-          input: { type: 'code_pattern', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
+          input: { type: 'FileConvention', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
         },
       ],
       toolUses: [
         {
           id: 'tu-stage',
           name: 'stage_memory',
-          input: { type: 'code_pattern', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
+          input: { type: 'FileConvention', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
         },
       ],
       usage: { inputTokens: 100, outputTokens: 20 },
@@ -1891,11 +1891,11 @@ describe('Scenario 29: Agent loop with non-fire_gate tool calls', () => {
 
     // First LLM call: stage_memory tool_use
     mockLLM.enqueueToolUse('stage_memory', {
-      type: 'code_pattern', content: 'Use connection pooling', relevanceTags: ['db'],
+      type: 'FileConvention', content: 'Use connection pooling', relevanceTags: ['db'],
     });
     // Second LLM call: another stage_memory
     mockLLM.enqueueToolUse('stage_memory', {
-      type: 'decision', content: 'Chose PostgreSQL over MySQL', relevanceTags: ['architecture'],
+      type: 'TeamConvention', content: 'Chose PostgreSQL over MySQL', relevanceTags: ['architecture'],
     });
     // Third LLM call: end_turn with result
     mockLLM.enqueueJson({ repoId: 'default-repo', commitSha: 'multi-tool-abc' });
@@ -2093,34 +2093,46 @@ describe('Scenario 32: Resume from snapshot — agent_skipped_on_resume events',
 // ─── Scenario 33: Memory merge after Ship phase ──────────────────────────────
 
 describe('Scenario 33: Memory merge after Ship phase', () => {
-  it('memoryConnector.mergeRecords is callable and does not throw', async () => {
-    // mergeRecords is a stub (no-op) but verifies the contract
-    await expect(memoryConnector.mergeRecords('test-run-id')).resolves.toBeUndefined();
+  it('memoryConnector.getStagingRecords returns empty for unknown runId', async () => {
+    const records = await memoryConnector.getStagingRecords('nonexistent-run-id');
+    expect(records).toEqual([]);
   });
 
   it('stageRecord then mergeRecords flow works end-to-end', async () => {
     // Stage some records
-    await memoryConnector.stageRecord({
+    await memoryConnector.writeToStaging({
       runId: 'merge-test',
       harnessId: WELL_KNOWN_HARNESS_ID,
-      type: 'code_pattern',
+      type: 'FileConvention',
       content: 'Use async/await',
       relevanceTags: ['patterns'],
+      agentId: 'ship-default',
     });
-    await memoryConnector.stageRecord({
+    await memoryConnector.writeToStaging({
       runId: 'merge-test',
       harnessId: WELL_KNOWN_HARNESS_ID,
-      type: 'decision',
+      type: 'TeamConvention',
       content: 'Chose NestJS',
       relevanceTags: ['architecture'],
+      agentId: 'ship-default',
     });
 
-    // Merge should succeed (stub is no-op)
-    await expect(memoryConnector.mergeRecords('merge-test')).resolves.toBeUndefined();
+    // Get staging records and merge them
+    const staged = await memoryConnector.getStagingRecords('merge-test');
+    expect(staged.length).toBe(2);
 
-    // Query returns empty (stub)
-    const hits = await memoryConnector.query(WELL_KNOWN_HARNESS_ID, 'anything');
-    expect(hits).toEqual([]);
+    for (const record of staged) {
+      await memoryConnector.mergeRecord(record);
+    }
+
+    // Clear staging
+    await memoryConnector.clearStaging('merge-test');
+    const remaining = await memoryConnector.getStagingRecords('merge-test');
+    expect(remaining.length).toBe(0);
+
+    // Query with semantic search
+    const hits = await memoryConnector.query({ harnessId: WELL_KNOWN_HARNESS_ID, query: 'async patterns' });
+    expect(Array.isArray(hits)).toBe(true);
   });
 });
 
