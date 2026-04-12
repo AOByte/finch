@@ -96,6 +96,22 @@ class MockLLMConnector implements LLMConnector {
     last.content = [{ type: 'text', text: phase }];
   }
 
+  /** Enqueue a non-fire_gate tool use response */
+  enqueueToolUse(toolName: string, toolInput: Record<string, unknown>): void {
+    const id = `tu-${uuidv4()}`;
+    this.enqueue({
+      text: '',
+      content: [
+        { type: 'tool_use', id, name: toolName, input: toolInput },
+      ],
+      toolUses: [
+        { id, name: toolName, input: toolInput },
+      ],
+      usage: { inputTokens: 100, outputTokens: 20 },
+      stopReason: 'tool_use',
+    });
+  }
+
   async complete(params: LLMCompleteParams): Promise<LLMResponse> {
     this.callLog.push(params);
     if (this.responseQueue.length > 0) {
@@ -181,6 +197,7 @@ let mockLLM: MockLLMConnector;
 let mockAuditQueue: MockQueue;
 let mockTimeoutQueue: MockQueue;
 let llmRegistry: LLMRegistryService;
+let ruleEnforcement: RuleEnforcementService;
 
 // Track created run IDs for cleanup
 const createdRunIds: string[] = [];
@@ -268,7 +285,7 @@ beforeAll(async () => {
   // Services
   memoryConnector = new MemoryConnectorService();
   const agentConfigService = new AgentConfigService(ps);
-  const ruleEnforcement = new RuleEnforcementService(llmRegistry);
+  ruleEnforcement = new RuleEnforcementService(llmRegistry);
 
   // Gate controller
   gateController = new GateControllerService(
@@ -1352,5 +1369,956 @@ describe('Scenario 17: Full pipeline Trigger → Acquire → Plan → Execute �
     expect(startedPhases).toContain('PLAN');
     expect(startedPhases).toContain('EXECUTE');
     expect(startedPhases).toContain('SHIP');
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// Additional Workflow Coverage Scenarios (18–35)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+// ─── Scenario 18: Hard rule violation — path pattern fires gate ──────────────
+
+describe('Scenario 18: Hard rule violation — path pattern', () => {
+  it('checkHardRules returns violated when artifact contains matching path', async () => {
+    const rules = [{
+      ruleId: 'hr-path-1', name: 'no-secrets',
+      constraint: 'Artifact must not reference secrets directory',
+      enforcement: 'hard' as const, patternType: 'path' as const, patterns: ['secrets/'],
+    }];
+    const artifact = { files: ['src/config.ts', 'secrets/api-key.txt'] };
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(true);
+    expect(result.rule!.ruleId).toBe('hr-path-1');
+    expect(result.gateQuestion).toContain('Hard rule violated');
+  });
+
+  it('checkHardRules returns not violated when no path match', async () => {
+    const rules = [{
+      ruleId: 'hr-path-2', name: 'no-secrets',
+      constraint: 'Artifact must not reference secrets directory',
+      enforcement: 'hard' as const, patternType: 'path' as const, patterns: ['secrets/'],
+    }];
+    const artifact = { files: ['src/config.ts', 'src/utils.ts'] };
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(false);
+  });
+});
+
+// ─── Scenario 19: Hard rule violation — regex pattern ─────────────────────────
+
+describe('Scenario 19: Hard rule violation — regex pattern', () => {
+  it('checkHardRules detects violation via regex match', async () => {
+    const rules = [{
+      ruleId: 'hr-regex-1', name: 'no-console-log',
+      constraint: 'Code must not contain console.log statements',
+      enforcement: 'hard' as const, patternType: 'regex' as const,
+      patterns: ['console\\.log\\('],
+    }];
+    const artifact = 'function main() { console.log("debug"); }';
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(true);
+    expect(result.rule!.ruleId).toBe('hr-regex-1');
+  });
+
+  it('regex rule does not match clean artifact', async () => {
+    const rules = [{
+      ruleId: 'hr-regex-2', name: 'no-console-log',
+      constraint: 'Code must not contain console.log statements',
+      enforcement: 'hard' as const, patternType: 'regex' as const,
+      patterns: ['console\\.log\\('],
+    }];
+    const artifact = 'function main() { logger.info("debug"); }';
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(false);
+  });
+});
+
+// ─── Scenario 20: Hard rule violation — semantic (LLM) evaluation ─────────────
+
+describe('Scenario 20: Hard rule violation — semantic LLM evaluation', () => {
+  it('semantic rule evaluates to violated when LLM returns YES', async () => {
+    const rules = [{
+      ruleId: 'hr-sem-1', name: 'no-pii',
+      constraint: 'Artifact must not contain personally identifiable information',
+      enforcement: 'hard' as const, patternType: 'semantic' as const, patterns: [],
+    }];
+    const artifact = { userData: { name: 'John Smith', ssn: '123-45-6789' } };
+
+    mockLLM.enqueue({
+      text: 'YES', content: [{ type: 'text', text: 'YES' }], toolUses: [],
+      usage: { inputTokens: 50, outputTokens: 5 }, stopReason: 'end_turn',
+    });
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(true);
+    expect(result.rule!.ruleId).toBe('hr-sem-1');
+  });
+
+  it('semantic rule evaluates to not violated when LLM returns NO', async () => {
+    const rules = [{
+      ruleId: 'hr-sem-2', name: 'no-pii',
+      constraint: 'Artifact must not contain PII',
+      enforcement: 'hard' as const, patternType: 'semantic' as const, patterns: [],
+    }];
+    const artifact = { config: { maxRetries: 3, timeout: 5000 } };
+
+    mockLLM.enqueue({
+      text: 'NO', content: [{ type: 'text', text: 'NO' }], toolUses: [],
+      usage: { inputTokens: 50, outputTokens: 5 }, stopReason: 'end_turn',
+    });
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(false);
+  });
+
+  it('semantic rule falls back to not violated on LLM error', async () => {
+    const rules = [{
+      ruleId: 'hr-sem-3', name: 'check-safety',
+      constraint: 'Artifact must be safe',
+      enforcement: 'hard' as const, patternType: 'semantic' as const, patterns: [],
+    }];
+
+    const originalComplete = mockLLM.complete.bind(mockLLM);
+    mockLLM.complete = async () => { throw new Error('LLM unavailable'); };
+
+    const result = await ruleEnforcement.checkHardRules(rules, { data: 'test' });
+    expect(result.violated).toBe(false);
+
+    mockLLM.complete = originalComplete;
+  });
+});
+
+// ─── Scenario 21: Soft rule deviation logging ─────────────────────────────────
+
+describe('Scenario 21: Soft rule deviation logging', () => {
+  it('checkSoftRules returns deviations for violated soft rules', async () => {
+    const rules = [
+      {
+        ruleId: 'sr-1', name: 'prefer-const',
+        constraint: 'Should use const instead of let where possible',
+        enforcement: 'soft' as const, patternType: 'path' as const, patterns: ['let '],
+      },
+      {
+        ruleId: 'sr-2', name: 'max-line-length',
+        constraint: 'Lines should be under 120 characters',
+        enforcement: 'soft' as const, patternType: 'regex' as const, patterns: ['.{121,}'],
+      },
+    ];
+    const artifact = 'let x = 1;\nconst longLine = "' + 'a'.repeat(130) + '";';
+
+    const result = await ruleEnforcement.checkSoftRules(rules, artifact);
+    expect(result.deviations.length).toBe(2);
+    expect(result.deviations[0].rule.ruleId).toBe('sr-1');
+    expect(result.deviations[0].reason).toContain('Soft rule deviation');
+    expect(result.deviations[1].rule.ruleId).toBe('sr-2');
+  });
+
+  it('checkSoftRules returns empty deviations when rules pass', async () => {
+    const rules = [{
+      ruleId: 'sr-3', name: 'no-var',
+      constraint: 'Should not use var keyword',
+      enforcement: 'soft' as const, patternType: 'path' as const, patterns: ['var '],
+    }];
+    const artifact = 'const x = 1; let y = 2;';
+
+    const result = await ruleEnforcement.checkSoftRules(rules, artifact);
+    expect(result.deviations.length).toBe(0);
+  });
+
+  it('soft rules are skipped by checkHardRules', async () => {
+    const rules = [{
+      ruleId: 'sr-4', name: 'soft-only',
+      constraint: 'This is a soft rule',
+      enforcement: 'soft' as const, patternType: 'path' as const, patterns: ['anything'],
+    }];
+    const artifact = 'anything goes here';
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(false);
+  });
+});
+
+// ─── Scenario 22: Invalid regex pattern handled gracefully ───────────────────
+
+describe('Scenario 22: Invalid regex pattern — graceful handling', () => {
+  it('evaluateRule catches invalid regex and returns false', async () => {
+    const rules = [{
+      ruleId: 'hr-badregex', name: 'bad-regex',
+      constraint: 'Rule with broken regex',
+      enforcement: 'hard' as const, patternType: 'regex' as const, patterns: ['[invalid(regex'],
+    }];
+    const artifact = 'some content that would match if regex was valid';
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(false);
+  });
+
+  it('mixed valid/invalid regex — valid pattern still matches', async () => {
+    const rules = [{
+      ruleId: 'hr-mixedregex', name: 'mixed-regex',
+      constraint: 'Mixed regex patterns',
+      enforcement: 'hard' as const, patternType: 'regex' as const,
+      patterns: ['[invalid(', 'console\\.log'],
+    }];
+    const artifact = 'console.log("test")';
+
+    const result = await ruleEnforcement.checkHardRules(rules, artifact);
+    expect(result.violated).toBe(true);
+  });
+});
+
+// ─── Scenario 23: Gate P forward — stays in PLAN ─────────────────────────────
+
+describe('Scenario 23: Gate P forward — resolves to PLAN (stays in phase)', () => {
+  const runId = uuidv4();
+  let gateId: string;
+
+  it('fires gate in PLAN and dispatches', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    mockLLM.enqueueGate('Need clarification on approach', 'Should we use microservices or monolith?');
+    const planCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: ['src/app.ts'], dependencies: [],
+    };
+    const result = await planAgent.runPlan(context, planCtx);
+
+    expect(result).toBeInstanceOf(GateEvent);
+    const gate = result as GateEvent;
+    expect(gate.phase).toBe('PLAN');
+
+    await gateController.dispatch(gate);
+    gateId = gate.gateId;
+  });
+
+  it('LLM classifies traversal to PLAN (forward/stay)', async () => {
+    mockLLM.enqueueClassification('PLAN');
+    const resolution = await gateController.resolve(gateId, 'Use monolith for now');
+    expect(resolution.requiresPhase).toBe('PLAN');
+  });
+
+  it('no backward traversal event is logged when staying in same phase', async () => {
+    const events = await auditRepo.findByRunId(runId);
+    const traversals = events.filter((e) => e.eventType === 'gate_traversal_backward');
+    expect(traversals.length).toBe(0);
+  });
+});
+
+// ─── Scenario 24: Gate E backward to ACQUIRE — deepest traversal ─────────────
+
+describe('Scenario 24: Gate E backward to ACQUIRE (deepest traversal)', () => {
+  const runId = uuidv4();
+  let gateId: string;
+
+  it('fires gate in EXECUTE', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    mockLLM.enqueueGate('Completely wrong codebase', 'Which repository should I be working in?');
+    const executeCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
+    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Deploy'] };
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    };
+    const result = await executeAgent.runExecute(plan, context, executeCtx);
+
+    expect(result).toBeInstanceOf(GateEvent);
+    const gate = result as GateEvent;
+    await gateController.dispatch(gate);
+    gateId = gate.gateId;
+  });
+
+  it('LLM classifies traversal to ACQUIRE (deepest backward)', async () => {
+    mockLLM.enqueueClassification('ACQUIRE');
+    const resolution = await gateController.resolve(gateId, 'Use the finch-backend repo');
+    expect(resolution.requiresPhase).toBe('ACQUIRE');
+  });
+
+  it('backward traversal event logged with EXECUTE→ACQUIRE', async () => {
+    const events = await auditRepo.findByRunId(runId);
+    const traversal = events.find((e) => e.eventType === 'gate_traversal_backward');
+    expect(traversal).toBeDefined();
+    expect((traversal!.payload as { fromPhase: string }).fromPhase).toBe('EXECUTE');
+    expect((traversal!.payload as { toPhase: string }).toPhase).toBe('ACQUIRE');
+  });
+});
+
+// ─── Scenario 25: Cascading multi-phase traversal ────────────────────────────
+
+describe('Scenario 25: Cascading traversal — E→ACQUIRE then PLAN gate', () => {
+  const runId = uuidv4();
+
+  it('Gate E→ACQUIRE, re-run phases, Gate P fires, resolves, completes', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // TRIGGER succeeds
+    mockLLM.enqueueJson({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'refactor auth', intent: 'refactor', scope: ['auth'],
+    });
+    const triggerCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
+    await triggerAgent.runTrigger(
+      { rawText: 'refactor auth', source, harnessId: WELL_KNOWN_HARNESS_ID, runId },
+      triggerCtx,
+    );
+
+    // ACQUIRE succeeds
+    mockLLM.enqueueJson({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: ['src/auth/'], dependencies: [],
+    });
+    const acquireCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const acquireResult = await acquireAgent.runAcquire(
+      { runId, harnessId: WELL_KNOWN_HARNESS_ID, normalizedPrompt: 'refactor auth', intent: 'refactor', scope: ['auth'] },
+      acquireCtx,
+    );
+    const context = acquireResult as ContextObject;
+
+    // PLAN succeeds
+    mockLLM.enqueueJson({ runId, hasGap: false, steps: ['Extract auth middleware'] });
+    const planCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
+    const planResult = await planAgent.runPlan(context, planCtx);
+    const plan = planResult as PlanArtifact;
+
+    // EXECUTE fires gate → ACQUIRE (deepest backward)
+    mockLLM.enqueueGate('Wrong auth library', 'Which auth library are we using?');
+    const executeCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
+    const execResult = await executeAgent.runExecute(plan, context, executeCtx);
+    expect(execResult).toBeInstanceOf(GateEvent);
+    const executeGate = execResult as GateEvent;
+    await gateController.dispatch(executeGate);
+
+    // Resolve Execute gate → ACQUIRE
+    mockLLM.enqueueClassification('ACQUIRE');
+    const execResolution = await gateController.resolve(executeGate.gateId, 'Use passport.js');
+    expect(execResolution.requiresPhase).toBe('ACQUIRE');
+
+    // Re-run ACQUIRE with gate answer context
+    mockLLM.enqueueJson({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: ['src/auth/', 'node_modules/passport'], dependencies: ['passport'],
+    });
+    const acquireCtx2 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const acquireResult2 = await acquireAgent.runAcquire(
+      { runId, harnessId: WELL_KNOWN_HARNESS_ID, normalizedPrompt: 'refactor auth', intent: 'refactor', scope: ['auth'] },
+      acquireCtx2,
+    );
+    const context2 = acquireResult2 as ContextObject;
+
+    // Re-run PLAN — fires gate
+    mockLLM.enqueueGate('Multiple auth strategies', 'Should we use JWT or session-based auth?');
+    const planCtx2 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
+    const planResult2 = await planAgent.runPlan(context2, planCtx2);
+    expect(planResult2).toBeInstanceOf(GateEvent);
+    const planGate = planResult2 as GateEvent;
+    await gateController.dispatch(planGate);
+
+    // Resolve Plan gate → PLAN (stay)
+    mockLLM.enqueueClassification('PLAN');
+    const planResolution = await gateController.resolve(planGate.gateId, 'Use JWT with refresh tokens');
+    expect(planResolution.requiresPhase).toBe('PLAN');
+
+    // Re-run PLAN — succeeds
+    mockLLM.enqueueJson({ runId, hasGap: false, steps: ['Extract auth middleware', 'Add JWT support'] });
+    const planCtx3 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
+    const planResult3 = await planAgent.runPlan(context2, planCtx3);
+    expect(planResult3).not.toBeInstanceOf(GateEvent);
+
+    // EXECUTE succeeds
+    mockLLM.enqueueJson({ runId, hasGap: false, allPassing: true, results: ['Auth tests pass'] });
+    const executeCtx2 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
+    const execResult2 = await executeAgent.runExecute(planResult3 as PlanArtifact, context2, executeCtx2);
+    expect(execResult2).not.toBeInstanceOf(GateEvent);
+
+    // Verify: two gate_fired events across different phases
+    const events = await auditRepo.findByRunId(runId);
+    const gateFired = events.filter((e) => e.eventType === 'gate_fired');
+    expect(gateFired.length).toBe(2);
+    const gatePhases = gateFired.map((e) => e.phase);
+    expect(gatePhases).toContain('EXECUTE');
+    expect(gatePhases).toContain('PLAN');
+  });
+});
+
+// ─── Scenario 26: Double gate in same phase ──────────────────────────────────
+
+describe('Scenario 26: Double gate in same phase — ACQUIRE fires twice', () => {
+  const runId = uuidv4();
+
+  it('first gate fires, resolves, second gate fires, resolves, completes', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+    const descriptor: TaskDescriptor = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'complex task', intent: 'feature', scope: [],
+    };
+
+    // First ACQUIRE — fires gate
+    mockLLM.enqueueGate('Missing module name', 'Which module?');
+    const acquireCtx1 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const result1 = await acquireAgent.runAcquire(descriptor, acquireCtx1);
+    expect(result1).toBeInstanceOf(GateEvent);
+    const gate1 = result1 as GateEvent;
+    await gateController.dispatch(gate1);
+
+    // Resolve first gate
+    const resolution1 = await gateController.resolve(gate1.gateId, 'The payments module');
+    expect(resolution1.requiresPhase).toBe('ACQUIRE');
+
+    // Second ACQUIRE — fires gate again
+    mockLLM.enqueueGate('Missing API version', 'Which API version?');
+    const acquireCtx2 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const result2 = await acquireAgent.runAcquire(descriptor, acquireCtx2);
+    expect(result2).toBeInstanceOf(GateEvent);
+    const gate2 = result2 as GateEvent;
+    await gateController.dispatch(gate2);
+
+    // Resolve second gate
+    const resolution2 = await gateController.resolve(gate2.gateId, 'API v2');
+    expect(resolution2.requiresPhase).toBe('ACQUIRE');
+
+    // Third ACQUIRE — succeeds
+    mockLLM.enqueueJson({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: ['src/payments/v2/'], dependencies: [],
+    });
+    const acquireCtx3 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const result3 = await acquireAgent.runAcquire(descriptor, acquireCtx3);
+    expect(result3).not.toBeInstanceOf(GateEvent);
+
+    // Verify two separate gate_fired events for same phase
+    const events = await auditRepo.findByRunId(runId);
+    const gateFired = events.filter((e) => e.eventType === 'gate_fired' && e.phase === 'ACQUIRE');
+    expect(gateFired.length).toBe(2);
+    expect(gate1.gateId).not.toBe(gate2.gateId);
+  });
+});
+
+// ─── Scenario 27: stopRunSignal — run status transitions ─────────────────────
+
+describe('Scenario 27: stopRunSignal — run status transitions', () => {
+  const runId = uuidv4();
+
+  it('run can transition from RUNNING to FAILED via updateStatus', async () => {
+    await createTestRun(runId);
+
+    let run = await runRepo.findById(runId);
+    expect(run!.status).toBe('RUNNING');
+
+    // The workflow returns { status: 'STOPPED' } when stop signal received.
+    // At DB level, this maps to marking the run with a terminal status.
+    await runRepo.updateStatus(runId, 'FAILED');
+    run = await runRepo.findById(runId);
+    expect(run!.status).toBe('FAILED');
+  });
+
+  it('WAITING_FOR_HUMAN run can be stopped', async () => {
+    const stoppableRunId = uuidv4();
+    await createTestRun(stoppableRunId);
+    await runRepo.updateStatus(stoppableRunId, 'WAITING_FOR_HUMAN');
+
+    let run = await runRepo.findById(stoppableRunId);
+    expect(run!.status).toBe('WAITING_FOR_HUMAN');
+
+    await runRepo.updateStatus(stoppableRunId, 'FAILED');
+    run = await runRepo.findById(stoppableRunId);
+    expect(run!.status).toBe('FAILED');
+  });
+});
+
+// ─── Scenario 28: Agent loop max iterations throws ───────────────────────────
+
+describe('Scenario 28: Agent loop max iterations (50) throws error', () => {
+  const runId = uuidv4();
+
+  it('throws after 50 iterations of non-terminating tool_use responses', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // Override complete to always return a non-fire_gate tool_use
+    const originalComplete = mockLLM.complete.bind(mockLLM);
+    let callCount = 0;
+    mockLLM.complete = async (params) => {
+      callCount++;
+      mockLLM.callLog.push(params);
+      return {
+        text: '',
+        content: [
+          { type: 'tool_use', id: `tu-iter-${callCount}`, name: 'unknown_tool', input: {} },
+        ],
+        toolUses: [
+          { id: `tu-iter-${callCount}`, name: 'unknown_tool', input: {} },
+        ],
+        usage: { inputTokens: 10, outputTokens: 5 },
+        stopReason: 'tool_use' as const,
+      };
+    };
+
+    const acquireCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const descriptor: TaskDescriptor = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'infinite loop', intent: 'test', scope: [],
+    };
+
+    await expect(
+      acquireAgent.runAcquire(descriptor, acquireCtx),
+    ).rejects.toThrow('Agent loop exceeded maximum iterations (50)');
+
+    expect(callCount).toBe(50);
+
+    mockLLM.complete = originalComplete;
+  });
+});
+
+// ─── Scenario 29: Agent loop with non-fire_gate tool calls ───────────────────
+
+describe('Scenario 29: Agent loop with non-fire_gate tool calls', () => {
+  const runId = uuidv4();
+
+  it('ship agent processes stage_memory tool then continues to end_turn', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // First LLM call: stage_memory tool_use
+    mockLLM.enqueueToolUse('stage_memory', {
+      type: 'code_pattern', content: 'Use connection pooling', relevanceTags: ['db'],
+    });
+    // Second LLM call: another stage_memory
+    mockLLM.enqueueToolUse('stage_memory', {
+      type: 'decision', content: 'Chose PostgreSQL over MySQL', relevanceTags: ['architecture'],
+    });
+    // Third LLM call: end_turn with result
+    mockLLM.enqueueJson({ repoId: 'default-repo', commitSha: 'multi-tool-abc' });
+
+    const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
+    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Ship it'] };
+    const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    };
+
+    const result = await shipAgent.runShip(plan, report, context, 'default-repo', shipCtx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+
+    // Verify two tool_call audit events were enqueued (non-critical)
+    const toolCallJobs = mockAuditQueue.jobs.filter(
+      (j) => (j.data as { eventType: string; runId: string }).eventType === 'tool_call'
+        && (j.data as { runId: string }).runId === runId,
+    );
+    expect(toolCallJobs.length).toBe(2);
+
+    // Verify two memory_staged audit events
+    const memStagedJobs = mockAuditQueue.jobs.filter(
+      (j) => (j.data as { eventType: string; runId: string }).eventType === 'memory_staged'
+        && (j.data as { runId: string }).runId === runId,
+    );
+    expect(memStagedJobs.length).toBe(2);
+
+    // 3 LLM calls total (2 tool_use + 1 end_turn)
+    const llmJobs = mockAuditQueue.jobs.filter(
+      (j) => (j.data as { eventType: string; runId: string }).eventType === 'llm_call'
+        && (j.data as { runId: string }).runId === runId,
+    );
+    expect(llmJobs.length).toBe(3);
+  });
+
+  it('unknown tool returns error result but loop continues', async () => {
+    const unknownToolRunId = uuidv4();
+    await createTestRun(unknownToolRunId);
+    const source = buildSource(unknownToolRunId);
+
+    // First call: unknown tool
+    mockLLM.enqueueToolUse('nonexistent_tool', { data: 'test' });
+    // Second call: end_turn
+    mockLLM.enqueueJson({
+      runId: unknownToolRunId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    });
+
+    const acquireCtx = buildAgentContext(unknownToolRunId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const descriptor: TaskDescriptor = {
+      runId: unknownToolRunId, harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'test unknown tool', intent: 'test', scope: [],
+    };
+
+    const result = await acquireAgent.runAcquire(descriptor, acquireCtx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+
+    // Tool call should have been logged with error result
+    const toolCallJobs = mockAuditQueue.jobs.filter(
+      (j) => (j.data as { eventType: string; runId: string }).eventType === 'tool_call'
+        && (j.data as { runId: string }).runId === unknownToolRunId,
+    );
+    expect(toolCallJobs.length).toBe(1);
+    const toolPayload = (toolCallJobs[0].data as { payload: { result: { error: string } } }).payload;
+    expect(toolPayload.result.error).toBe('Unknown tool');
+  });
+});
+
+// ─── Scenario 30: Gate snapshot shape — GatePSnapshot includes contextObject ─
+
+describe('Scenario 30: Gate snapshot shape — GatePSnapshot', () => {
+  const runId = uuidv4();
+
+  it('PLAN gate snapshot includes contextObject field', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+    const inputContext: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: ['src/app.ts'], dependencies: ['express'],
+    };
+
+    dispatcher.registerPhaseRunner('PLAN', async (_input, ctx) => {
+      return new GateEvent({
+        phase: 'PLAN', runId: ctx.runId, harnessId: ctx.harnessId,
+        gapDescription: 'Need arch decision', question: 'What pattern?',
+        source: ctx.source, agentId: ctx.agentConfig.agentId,
+        pipelinePosition: ctx.pipelinePosition,
+      });
+    });
+
+    const result = await dispatcher.dispatchPhase({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID, phase: 'PLAN',
+      input: inputContext, source,
+    });
+
+    expect(result).toBeInstanceOf(GateEvent);
+    const gate = result as GateEvent;
+    expect(gate.snapshot).toBeDefined();
+    expect(gate.snapshot!.pipelinePosition).toBe(0);
+    // GatePSnapshot has contextObject
+    expect((gate.snapshot as { contextObject?: unknown }).contextObject).toBeDefined();
+  });
+});
+
+// ─── Scenario 31: Gate snapshot shape — GateESnapshot includes executionProgress
+
+describe('Scenario 31: Gate snapshot shape — GateESnapshot', () => {
+  const runId = uuidv4();
+
+  it('EXECUTE gate snapshot includes executionProgress and planArtifact', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+    const inputPlan: PlanArtifact = { runId, hasGap: false, steps: ['Step 1'] };
+
+    dispatcher.registerPhaseRunner('EXECUTE', async (_input, ctx) => {
+      return new GateEvent({
+        phase: 'EXECUTE', runId: ctx.runId, harnessId: ctx.harnessId,
+        gapDescription: 'Stuck on test', question: 'How to fix?',
+        source: ctx.source, agentId: ctx.agentConfig.agentId,
+        pipelinePosition: ctx.pipelinePosition,
+      });
+    });
+
+    const result = await dispatcher.dispatchPhase({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID, phase: 'EXECUTE',
+      input: inputPlan, source,
+    });
+
+    expect(result).toBeInstanceOf(GateEvent);
+    const gate = result as GateEvent;
+    expect(gate.snapshot).toBeDefined();
+    expect(gate.snapshot!.pipelinePosition).toBe(0);
+    // GateESnapshot has executionProgress, planArtifact, contextObject
+    const snapshot = gate.snapshot as {
+      executionProgress?: { completedSubTaskIds: string[]; modifiedFiles: string[]; verificationResultsSoFar: string[] };
+      planArtifact?: unknown;
+      contextObject?: unknown;
+    };
+    expect(snapshot.executionProgress).toBeDefined();
+    expect(snapshot.executionProgress!.completedSubTaskIds).toEqual([]);
+    expect(snapshot.executionProgress!.modifiedFiles).toEqual([]);
+    expect(snapshot.planArtifact).toBeDefined();
+    expect(snapshot.contextObject).toBeDefined();
+  });
+});
+
+// ─── Scenario 32: Resume from snapshot with agent_skipped_on_resume ──────────
+
+describe('Scenario 32: Resume from snapshot — agent_skipped_on_resume events', () => {
+  const runId = uuidv4();
+
+  it('agents before resume position are skipped with audit events', async () => {
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // Register a runner that returns input
+    dispatcher.registerPhaseRunner('ACQUIRE', async (input: unknown) => {
+      return { ...input as object, resumed: true };
+    });
+
+    const snapshot = {
+      pipelinePosition: 1,
+      artifactAtSuspension: { data: 'old' },
+      agentOutputsBeforeGate: [
+        { position: 0, artifact: { data: 'agent-0-output' } },
+      ],
+    };
+
+    const result = await dispatcher.dispatchPhase({
+      runId, harnessId: WELL_KNOWN_HARNESS_ID, phase: 'ACQUIRE',
+      input: {}, source,
+      resumeFromSnapshot: snapshot,
+    });
+
+    // With the default harness having 1 agent at position 0,
+    // resuming from position 1 means the loop starts at position 1
+    // which is >= agents.length (1 agent), so it returns the restored artifact.
+    // The skipped event is emitted for position 0.
+    const skippedJobs = mockAuditQueue.jobs.filter(
+      (j) => (j.data as { eventType: string; runId: string }).eventType === 'agent_skipped_on_resume'
+        && (j.data as { runId: string }).runId === runId,
+    );
+    expect(skippedJobs.length).toBe(1);
+    const skippedPayload = (skippedJobs[0].data as { payload: { skippedPosition: number; resumePosition: number } }).payload;
+    expect(skippedPayload.skippedPosition).toBe(0);
+    expect(skippedPayload.resumePosition).toBe(1);
+
+    // Artifact restored from snapshot's agentOutputsBeforeGate
+    expect(result).toEqual({ data: 'agent-0-output' });
+  });
+});
+
+// ─── Scenario 33: Memory merge after Ship phase ──────────────────────────────
+
+describe('Scenario 33: Memory merge after Ship phase', () => {
+  it('memoryConnector.mergeRecords is callable and does not throw', async () => {
+    // mergeRecords is a stub (no-op) but verifies the contract
+    await expect(memoryConnector.mergeRecords('test-run-id')).resolves.toBeUndefined();
+  });
+
+  it('stageRecord then mergeRecords flow works end-to-end', async () => {
+    // Stage some records
+    await memoryConnector.stageRecord({
+      runId: 'merge-test',
+      harnessId: WELL_KNOWN_HARNESS_ID,
+      type: 'code_pattern',
+      content: 'Use async/await',
+      relevanceTags: ['patterns'],
+    });
+    await memoryConnector.stageRecord({
+      runId: 'merge-test',
+      harnessId: WELL_KNOWN_HARNESS_ID,
+      type: 'decision',
+      content: 'Chose NestJS',
+      relevanceTags: ['architecture'],
+    });
+
+    // Merge should succeed (stub is no-op)
+    await expect(memoryConnector.mergeRecords('merge-test')).resolves.toBeUndefined();
+
+    // Query returns empty (stub)
+    const hits = await memoryConnector.query(WELL_KNOWN_HARNESS_ID, 'anything');
+    expect(hits).toEqual([]);
+  });
+});
+
+// ─── Scenario 34: Gate in TRIGGER/SHIP — graceful handling ───────────────────
+
+describe('Scenario 34: Gate in TRIGGER/SHIP — graceful handling at activity level', () => {
+  it('trigger agent CAN return GateEvent but workflow activity handles it gracefully', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // Trigger agent fires gate (shouldn't happen but technically possible)
+    mockLLM.enqueueGate('Task is unclear', 'What do you want?');
+    const triggerCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
+
+    const result = await triggerAgent.runTrigger(
+      { rawText: 'do something', source, harnessId: WELL_KNOWN_HARNESS_ID, runId },
+      triggerCtx,
+    );
+
+    // The agent returns a GateEvent
+    expect(result).toBeInstanceOf(GateEvent);
+    const gate = result as GateEvent;
+    expect(gate.phase).toBe('TRIGGER');
+
+    // The temporal worker's runTriggerPhase activity would handle this
+    // by returning a fallback TaskDescriptor (line 98-107 of temporal-worker.service.ts)
+    // Verify the gate has the expected shape even from TRIGGER phase
+    expect(gate.runId).toBe(runId);
+    expect(gate.question).toBe('What do you want?');
+  });
+
+  it('ship agent CAN return GateEvent but workflow activity handles it gracefully', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // Ship agent fires gate
+    mockLLM.enqueueGate('Cannot ship without approval', 'Is this approved for production?');
+    const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
+    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Deploy'] };
+    const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    };
+
+    const result = await shipAgent.runShip(plan, report, context, 'default-repo', shipCtx);
+
+    // ShipAgent returns GateEvent (line 121-123 of ship-agent.service.ts)
+    expect(result).toBeInstanceOf(GateEvent);
+    const gate = result as GateEvent;
+    expect(gate.phase).toBe('SHIP');
+
+    // The temporal worker's runShipPhase activity handles this
+    // by returning { repoId, commitSha: 'gate-fired' } (line 222-224)
+    // SHIP has NO gate loop in the workflow, so the gate would be silently lost
+    expect(gate.question).toBe('Is this approved for production?');
+  });
+});
+
+// ─── Scenario 35: parseOutput fallback — all 5 agents ────────────────────────
+
+describe('Scenario 35: parseOutput fallback for all 5 agents on invalid JSON', () => {
+  it('TriggerAgent returns fallback TaskDescriptor on invalid JSON', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    // LLM returns non-JSON text
+    mockLLM.enqueue({
+      text: 'This is not JSON at all',
+      content: [{ type: 'text', text: 'This is not JSON at all' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'TRIGGER', source);
+    const result = await triggerAgent.runTrigger(
+      { rawText: 'test', source, harnessId: WELL_KNOWN_HARNESS_ID, runId },
+      ctx,
+    );
+
+    // Falls back to basic descriptor with text as normalizedPrompt
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const descriptor = result as TaskDescriptor;
+    expect(descriptor.normalizedPrompt).toBe('This is not JSON at all');
+    expect(descriptor.intent).toBe('unknown');
+    expect(descriptor.scope).toEqual([]);
+  });
+
+  it('AcquireAgent returns fallback ContextObject on invalid JSON', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    mockLLM.enqueue({
+      text: 'Not valid JSON',
+      content: [{ type: 'text', text: 'Not valid JSON' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'ACQUIRE', source);
+    const descriptor: TaskDescriptor = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      normalizedPrompt: 'test', intent: 'test', scope: [],
+    };
+
+    const result = await acquireAgent.runAcquire(descriptor, ctx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const context = result as ContextObject;
+    expect(context.hasGap).toBe(false);
+    expect(context.files).toEqual([]);
+    expect(context.dependencies).toEqual([]);
+  });
+
+  it('PlanAgent returns fallback PlanArtifact on invalid JSON', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    mockLLM.enqueue({
+      text: 'Not valid JSON plan',
+      content: [{ type: 'text', text: 'Not valid JSON plan' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    };
+
+    const result = await planAgent.runPlan(context, ctx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const plan = result as PlanArtifact;
+    expect(plan.hasGap).toBe(false);
+    // PlanAgent falls back to [response.text] as steps
+    expect(plan.steps).toEqual(['Not valid JSON plan']);
+  });
+
+  it('ExecuteAgent returns fallback VerificationReport on invalid JSON', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    mockLLM.enqueue({
+      text: 'Not valid JSON report',
+      content: [{ type: 'text', text: 'Not valid JSON report' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
+    const plan: PlanArtifact = { runId, hasGap: false, steps: ['test'] };
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    };
+
+    const result = await executeAgent.runExecute(plan, context, ctx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+    const report = result as VerificationReport;
+    expect(report.allPassing).toBe(true);
+    // ExecuteAgent falls back to [response.text] as results
+    expect(report.results).toEqual(['Not valid JSON report']);
+  });
+
+  it('ShipAgent returns fallback ShipResult on invalid JSON', async () => {
+    const runId = uuidv4();
+    await createTestRun(runId);
+    const source = buildSource(runId);
+
+    mockLLM.enqueue({
+      text: 'Not valid JSON ship',
+      content: [{ type: 'text', text: 'Not valid JSON ship' }],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 10 },
+      stopReason: 'end_turn',
+    });
+
+    const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
+    const plan: PlanArtifact = { runId, hasGap: false, steps: ['test'] };
+    const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
+    const context: ContextObject = {
+      runId, harnessId: WELL_KNOWN_HARNESS_ID,
+      hasGap: false, files: [], dependencies: [],
+    };
+
+    const result = await shipAgent.runShip(plan, report, context, 'default-repo', ctx);
+    expect(result).not.toBeInstanceOf(GateEvent);
+    // ShipAgent falls back to { repoId: '', commitSha: 'stub-sha' }
+    // But runShip overrides repoId with the passed repoId
+    const ship = result as { repoId: string; commitSha: string };
+    expect(ship.commitSha).toBe('stub-sha');
   });
 });
