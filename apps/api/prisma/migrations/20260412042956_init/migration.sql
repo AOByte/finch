@@ -195,6 +195,12 @@ CREATE TABLE "memory_staging" (
     CONSTRAINT "memory_staging_pkey" PRIMARY KEY ("staging_id")
 );
 
+-- CHECK constraints from SDD 15.1
+ALTER TABLE "runs" ADD CONSTRAINT "runs_status_check" CHECK (status IN ('RUNNING','WAITING_FOR_HUMAN','STALLED','COMPLETED','FAILED'));
+ALTER TABLE "runs" ADD CONSTRAINT "runs_current_phase_check" CHECK (current_phase IN ('TRIGGER','ACQUIRE','PLAN','EXECUTE','SHIP'));
+ALTER TABLE "rules" ADD CONSTRAINT "rules_enforcement_check" CHECK (enforcement IN ('hard', 'soft'));
+ALTER TABLE "rules" ADD CONSTRAINT "rules_pattern_type_check" CHECK (pattern_type IN ('path', 'regex', 'semantic'));
+
 -- CreateIndex
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 

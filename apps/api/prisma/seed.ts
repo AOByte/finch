@@ -1,13 +1,7 @@
 import { PrismaClient } from '@prisma/client';
-import { createHash } from 'crypto';
+import { hashSync } from 'bcryptjs';
 
 const prisma = new PrismaClient();
-
-function bcryptishHash(password: string): string {
-  // For seeding only — produces a deterministic hash.
-  // Real auth will use bcrypt; this avoids adding bcrypt as a dep in Wave 1.
-  return '$2b$10$seed.' + createHash('sha256').update(password).digest('hex');
-}
 
 async function main() {
   // 1. Default user
@@ -16,7 +10,7 @@ async function main() {
     update: {},
     create: {
       email: 'admin@finch.local',
-      passwordHash: bcryptishHash('finch-dev-password'),
+      passwordHash: hashSync('finch-dev-password', 10),
     },
   });
 
