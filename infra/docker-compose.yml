@@ -1,0 +1,56 @@
+services:
+  finch-postgres:
+    image: pgvector/pgvector:pg16
+    container_name: finch-postgres
+    environment:
+      POSTGRES_USER: finch
+      POSTGRES_PASSWORD: finch
+      POSTGRES_DB: finch
+    ports:
+      - '5432:5432'
+    volumes:
+      - finch_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U finch -d finch']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  finch-redis:
+    image: redis:7-alpine
+    container_name: finch-redis
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  finch-temporal:
+    image: temporalio/auto-setup:1.24
+    container_name: finch-temporal
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: finch
+      POSTGRES_PWD: finch
+      POSTGRES_SEEDS: finch-postgres
+    ports:
+      - '7233:7233'
+    depends_on:
+      finch-postgres:
+        condition: service_healthy
+
+  finch-temporal-ui:
+    image: temporalio/ui:2.31.2
+    container_name: finch-temporal-ui
+    environment:
+      TEMPORAL_ADDRESS: finch-temporal:7233
+    ports:
+      - '8080:8080'
+    depends_on:
+      - finch-temporal
+
+volumes:
+  finch_postgres_data:

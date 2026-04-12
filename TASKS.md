@@ -12,22 +12,22 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 **Goal:** a running skeleton. No business logic. Everything compiles, infrastructure comes up, NestJS starts, migrations apply cleanly.
 
-- [ ] **W1-01** — Initialise pnpm monorepo. Create `apps/api`, `apps/web`, `packages/types`. Configure `pnpm-workspace.yaml`. Set `"node": ">=20"` in root `package.json` engines field. Add `.nvmrc` with `20`.
+- [x] **W1-01** — Initialise pnpm monorepo. Create `apps/api`, `apps/web`, `packages/types`. Configure `pnpm-workspace.yaml`. Set `"node": ">=20"` in root `package.json` engines field. Add `.nvmrc` with `20`.
 
-- [ ] **W1-02** — Create `infra/docker-compose.yml` with the following services, all using `finch-` prefix, Postgres credentials `finch/finch/finch`:
+- [x] **W1-02** — Create `infra/docker-compose.yml` with the following services, all using `finch-` prefix, Postgres credentials `finch/finch/finch`:
   - `finch-postgres` — `pgvector/pgvector:pg16`, port 5432, named volume `finch_postgres_data`
   - `finch-redis` — `redis:7-alpine`, port 6379
   - `finch-temporal` — `temporalio/auto-setup:1.24`, port 7233, env `DB=postgresql`, `POSTGRES_USER=finch`, `POSTGRES_PWD=finch`, `POSTGRES_SEEDS=finch-postgres`, depends on `finch-postgres`
   - `finch-temporal-ui` — `temporalio/ui:2.26`, port 8080, env `TEMPORAL_ADDRESS=finch-temporal:7233`
   - Include Docker `healthcheck` blocks for `finch-postgres` and `finch-redis`.
 
-- [ ] **W1-03** — Write `infra/healthcheck.sh`. Must check: `finch-postgres` accepts connections, `finch-redis` responds to PING, `finch-temporal-ui` returns HTTP 200 at `http://localhost:8080`. Exit 0 only when all three pass. Exit 1 with a message identifying which service failed. Verify: `docker compose -f infra/docker-compose.yml up -d` then `bash infra/healthcheck.sh` exits 0.
+- [x] **W1-03** — Write `infra/healthcheck.sh`. Must check: `finch-postgres` accepts connections, `finch-redis` responds to PING, `finch-temporal-ui` returns HTTP 200 at `http://localhost:8080`. Exit 0 only when all three pass. Exit 1 with a message identifying which service failed. Verify: `docker compose -f infra/docker-compose.yml up -d` then `bash infra/healthcheck.sh` exits 0.
 
-- [ ] **W1-04** — Scaffold `apps/api` as a NestJS 10 application. Configure `tsconfig.json` with `strict: true`, `strictNullChecks: true`. Install all dependencies from the tech stack table in AGENTS.md section 5. API runs on port 3001.
+- [x] **W1-04** — Scaffold `apps/api` as a NestJS 10 application. Configure `tsconfig.json` with `strict: true`, `strictNullChecks: true`. Install all dependencies from the tech stack table in AGENTS.md section 5. API runs on port 3001.
 
-- [ ] **W1-05** — Create all NestJS module stub files per the module tree in AGENTS.md section 7. Each file must exist, export its module class, and be imported into `AppModule`. No logic in any module yet — stubs only. Modules required: `OrchestratorModule`, `WorkflowModule`, `AgentModule`, `ConnectorModule`, `LLMModule`, `MemoryModule`, `AuditModule`, `PersistenceModule`, `WebSocketModule`, `AuthModule`, `ApiModule`. Verify: `pnpm --filter api exec tsc --noEmit` passes with all modules wired.
+- [x] **W1-05** — Create all NestJS module stub files per the module tree in AGENTS.md section 7. Each file must exist, export its module class, and be imported into `AppModule`. No logic in any module yet — stubs only. Modules required: `OrchestratorModule`, `WorkflowModule`, `AgentModule`, `ConnectorModule`, `LLMModule`, `MemoryModule`, `AuditModule`, `PersistenceModule`, `WebSocketModule`, `AuthModule`, `ApiModule`. Verify: `pnpm --filter api exec tsc --noEmit` passes with all modules wired.
 
-- [ ] **W1-06** — Write the Prisma schema at `apps/api/prisma/schema.prisma`. Include the pgvector extension declaration (`datasource` block must reference the `vector` extension). Include all tables from `docs/SDD.md` section 15.1 plus the following auth tables:
+- [x] **W1-06** — Write the Prisma schema at `apps/api/prisma/schema.prisma`. Include the pgvector extension declaration (`datasource` block must reference the `vector` extension). Include all tables from `docs/SDD.md` section 15.1 plus the following auth tables:
 
   **Auth tables (required for W6-01):**
   - `users` — `user_id UUID PK`, `email TEXT UNIQUE NOT NULL`, `password_hash TEXT NOT NULL`, `created_at TIMESTAMPTZ`
@@ -47,22 +47,22 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   - `memory_staging` — `staging_id`, `run_id FK`, `harness_id FK`, `type memory_type`, `content TEXT`, `embedding VECTOR(1536)`, `relevance_tags TEXT[]`, `content_hash TEXT`, `created_at`
   - `memory_type` enum — `TaskPattern`, `FileConvention`, `TeamConvention`, `GatePattern`, `RiskSignal`, `RepoMap`
 
-- [ ] **W1-07** — Run `pnpm --filter api prisma migrate dev --name init` against the running `finch-postgres` container. The migration must:
+- [x] **W1-07** — Run `pnpm --filter api prisma migrate dev --name init` against the running `finch-postgres` container. The migration must:
   1. Begin with `CREATE EXTENSION IF NOT EXISTS vector;` before any table definitions — this is required for `VECTOR` columns and will fail silently if omitted
   2. Create all tables from W1-06
   3. Add `CREATE RULE no_audit_update AS ON UPDATE TO audit_events DO INSTEAD NOTHING;` and `CREATE RULE no_audit_delete AS ON DELETE TO audit_events DO INSTEAD NOTHING;` as raw SQL after creating `audit_events`
   4. Add indexes: `HNSW` index on `memory_records.embedding` with `vector_cosine_ops`, and the indexes on `runs`, `gate_events`, `audit_events` from `docs/SDD.md` section 15.1
   Verify: migration applies with zero errors. Commit the generated migration file.
 
-- [ ] **W1-08** — Configure Pino as the NestJS logger adapter in `apps/api/src/main.ts`. Every log line must include `service: finch-api`. Log level read from `LOG_LEVEL` environment variable, defaulting to `info`.
+- [x] **W1-08** — Configure Pino as the NestJS logger adapter in `apps/api/src/main.ts`. Every log line must include `service: finch-api`. Log level read from `LOG_LEVEL` environment variable, defaulting to `info`.
 
-- [ ] **W1-09** — Add `GET /health` endpoint in `ApiModule`. Returns `{ status: "ok", service: "finch-api", timestamp: <ISO string> }`. Verify: `curl http://localhost:3001/health` returns HTTP 200 with that body.
+- [x] **W1-09** — Add `GET /health` endpoint in `ApiModule`. Returns `{ status: "ok", service: "finch-api", timestamp: <ISO string> }`. Verify: `curl http://localhost:3001/health` returns HTTP 200 with that body.
 
-- [ ] **W1-10** — Scaffold `apps/web` as a React 18 + Vite application with strict TypeScript. Install TanStack Router, TanStack Query, Radix UI. Single placeholder route at `/` rendering `<h1>Finch</h1>`. Verify: `pnpm --filter web dev` starts on port 3000 and the page loads.
+- [x] **W1-10** — Scaffold `apps/web` as a React 18 + Vite application with strict TypeScript. Install TanStack Router, TanStack Query, Radix UI. Single placeholder route at `/` rendering `<h1>Finch</h1>`. Verify: `pnpm --filter web dev` starts on port 3000 and the page loads.
 
-- [ ] **W1-11** — Write a root `README.md` covering: what Finch is (2–3 sentences), prerequisites, how to start the stack, how to run the API, how to run the frontend, links to `AGENTS.md` and `docs/SDD.md`. Also create `skills/README.md` with the content describing the two skill files, when to read them, and the dual purpose (implementing agent guidance + runtime skill source material).
+- [x] **W1-11** — Write a root `README.md` covering: what Finch is (2–3 sentences), prerequisites, how to start the stack, how to run the API, how to run the frontend, links to `AGENTS.md` and `docs/SDD.md`. Also create `skills/README.md` with the content describing the two skill files, when to read them, and the dual purpose (implementing agent guidance + runtime skill source material).
 
-- [ ] **W1-12** — Configure GitHub Actions CI at `.github/workflows/ci.yml`. Five jobs, all triggered on every push and PR:
+- [x] **W1-12** — Configure GitHub Actions CI at `.github/workflows/ci.yml`. Five jobs, all triggered on every push and PR:
   1. **install** — `pnpm install`
   2. **typecheck-api** — `pnpm --filter api exec tsc --noEmit`
   3. **typecheck-web** — `pnpm --filter web exec tsc --noEmit`
