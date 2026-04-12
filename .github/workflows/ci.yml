@@ -54,6 +54,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter api test run
+      - run: pnpm --filter web test run
 
   integration-tests:
     runs-on: ubuntu-latest
