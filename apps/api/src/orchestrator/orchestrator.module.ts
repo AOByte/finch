@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
+import { BullModule } from '@nestjs/bullmq';
 import { AgentModule } from '../agents/agent.module';
 import { ConnectorModule } from '../connectors/connector.module';
 import { MemoryModule } from '../memory/memory.module';
@@ -10,7 +11,15 @@ import { AgentDispatcherService } from './agent-dispatcher.service';
 import { RuleEnforcementService } from './rule-enforcement.service';
 
 @Module({
-  imports: [AgentModule, ConnectorModule, MemoryModule, AuditModule, PersistenceModule, LLMModule],
+  imports: [
+    forwardRef(() => AgentModule),
+    ConnectorModule,
+    MemoryModule,
+    AuditModule,
+    PersistenceModule,
+    LLMModule,
+    BullModule.registerQueue({ name: 'gate-timeout' }),
+  ],
   providers: [GateControllerService, AgentDispatcherService, RuleEnforcementService],
   exports: [GateControllerService, AgentDispatcherService, RuleEnforcementService],
 })

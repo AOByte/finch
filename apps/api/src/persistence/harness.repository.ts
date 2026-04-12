@@ -14,6 +14,10 @@ export class HarnessRepository {
     return this.prisma.harness.findUnique({ where: { harnessId } });
   }
 
+  async findByName(name: string): Promise<Harness | null> {
+    return this.prisma.harness.findFirst({ where: { name } });
+  }
+
   async findAll(): Promise<Harness[]> {
     return this.prisma.harness.findMany();
   }

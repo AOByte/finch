@@ -11,6 +11,8 @@ import { WebSocketModule } from '../websocket/websocket.module';
 import { AuthModule } from '../auth/auth.module';
 import { HealthController } from './health.controller';
 import { RunsController } from './runs.controller';
+import { TriggerController } from './trigger.controller';
+import { GateController } from './gate.controller';
 
 @Module({
   imports: [
@@ -25,7 +27,7 @@ import { RunsController } from './runs.controller';
     WebSocketModule,
     AuthModule,
   ],
-  controllers: [HealthController, RunsController],
+  controllers: [HealthController, RunsController, TriggerController, GateController],
   providers: [],
 })
 export class ApiModule {}

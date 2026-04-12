@@ -8,6 +8,7 @@ describe('HarnessRepository', () => {
     harness: {
       create: ReturnType<typeof vi.fn>;
       findUnique: ReturnType<typeof vi.fn>;
+      findFirst: ReturnType<typeof vi.fn>;
       findMany: ReturnType<typeof vi.fn>;
       update: ReturnType<typeof vi.fn>;
     };
@@ -18,6 +19,7 @@ describe('HarnessRepository', () => {
       harness: {
         create: vi.fn(),
         findUnique: vi.fn(),
+        findFirst: vi.fn(),
         findMany: vi.fn(),
         update: vi.fn(),
       },
@@ -40,6 +42,16 @@ describe('HarnessRepository', () => {
     expect(result).toBeNull();
     expect(prisma.harness.findUnique).toHaveBeenCalledWith({
       where: { harnessId: 'nonexistent' },
+    });
+  });
+
+  it('findByName returns harness or null', async () => {
+    const expected = { harnessId: 'h1', name: 'default' };
+    prisma.harness.findFirst.mockResolvedValue(expected);
+    const result = await repo.findByName('default');
+    expect(result).toBe(expected);
+    expect(prisma.harness.findFirst).toHaveBeenCalledWith({
+      where: { name: 'default' },
     });
   });
 
