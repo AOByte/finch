@@ -20,7 +20,7 @@
 
 **Finch** orchestrates LLM-powered agents through the **TAPES** pipeline — a structured five-phase lifecycle with durable execution, human-in-the-loop clarification gates, and semantic memory that learns from every run.
 
-[Getting Started](#-getting-started) · [Architecture](#-architecture) · [Tech Stack](#-tech-stack) · [Documentation](#-documentation) · [Contributing](#-contributing) · [License](#-license)
+[Getting Started](#getting-started) · [Architecture](#architecture) · [Tech Stack](#tech-stack) · [Documentation](#documentation) · [Contributing](#contributing) · [License](#license)
 
 </div>
 
