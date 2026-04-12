@@ -97,7 +97,7 @@ describe('Seed Data', () => {
     it('should have one config per TAPES phase', async () => {
       const configs = await prisma.agentConfig.findMany({
         where: { harnessId: '00000000-0000-0000-0000-000000000001' },
-        orderBy: { position: 'asc' },
+        orderBy: { agentConfigId: 'asc' },
       });
 
       const phases = configs.map((c) => c.phase);
@@ -127,7 +127,7 @@ describe('Seed Data', () => {
     it('should have agent_id matching phase name pattern', async () => {
       const configs = await prisma.agentConfig.findMany({
         where: { harnessId: '00000000-0000-0000-0000-000000000001' },
-        orderBy: { position: 'asc' },
+        orderBy: { agentConfigId: 'asc' },
       });
 
       for (const config of configs) {
