@@ -6,7 +6,7 @@ import { ParseOutputError } from '../../src/agents/errors';
 describe('ShipAgentService', () => {
   const mockAuditLogger = { log: vi.fn().mockResolvedValue(undefined) };
   const mockLLM = { complete: vi.fn(), providerId: 'anthropic' };
-  const mockMemoryConnector = { query: vi.fn(), stageRecord: vi.fn().mockResolvedValue(undefined), mergeRecords: vi.fn() };
+  const mockMemoryConnector = { query: vi.fn(), stageRecord: vi.fn().mockResolvedValue(undefined), mergeRecords: vi.fn(), writeToStaging: vi.fn().mockResolvedValue(undefined) };
   const mockDispatcher = {
     getAuditLogger: vi.fn().mockReturnValue(mockAuditLogger),
     getLLM: vi.fn().mockReturnValue(mockLLM),
@@ -38,7 +38,7 @@ describe('ShipAgentService', () => {
 
   it('buildInitialMessage includes repo and plan', () => {
     const msg = service.buildInitialMessage({
-      plan: { runId: 'r1', hasGap: false, steps: ['step1'] },
+      plan: { runId: 'r1', hasGap: false, steps: [{ description: 'step1' }] },
       report: { runId: 'r1', hasGap: false, allPassing: true, results: [] },
       context: { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] },
       repoId: 'my-repo',
@@ -50,7 +50,7 @@ describe('ShipAgentService', () => {
 
   it('buildInitialMessage shows some failing when allPassing is false', () => {
     const msg = service.buildInitialMessage({
-      plan: { runId: 'r1', hasGap: false, steps: ['step1'] },
+      plan: { runId: 'r1', hasGap: false, steps: [{ description: 'step1' }] },
       report: { runId: 'r1', hasGap: false, allPassing: false, results: [] },
       context: { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] },
       repoId: 'my-repo',
@@ -96,10 +96,9 @@ describe('ShipAgentService', () => {
       ctx as never,
     );
     expect(result).toEqual({ staged: true });
-    expect(mockMemoryConnector.stageRecord).toHaveBeenCalledWith({
-      runId: 'r1', harnessId: 'h1', type: 'decision', content: 'chose X', relevanceTags: ['tag1'],
-    });
-    expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'memory_staged' }));
+    expect(mockMemoryConnector.writeToStaging).toHaveBeenCalledWith(
+      expect.objectContaining({ runId: 'r1', harnessId: 'h1', type: 'decision', content: 'chose X' }),
+    );
   });
 
   it('executeToolCall returns error for unknown tool', async () => {
@@ -113,7 +112,7 @@ describe('ShipAgentService', () => {
       content: [], toolUses: [], usage: { inputTokens: 10, outputTokens: 5 }, stopReason: 'end_turn',
     });
 
-    const plan = { runId: 'r1', hasGap: false, steps: ['deploy'] };
+    const plan = { runId: 'r1', hasGap: false, steps: [{ description: 'deploy' }] };
     const report = { runId: 'r1', hasGap: false, allPassing: true, results: [] };
     const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
     const result = await service.runShip(plan, report, context, 'repo1', makeContext() as never);

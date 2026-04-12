@@ -91,17 +91,17 @@ export class AcquireAgentService extends BaseAgent<TaskDescriptor, ContextObject
     });
 
     // ME-01: Query memory FIRST before any external connector
-    const memoryHits = await this.dispatcher.getMemoryConnector().query(
-      context.harnessId,
-      input.normalizedPrompt,
-    );
+    const memoryHits = await this.dispatcher.getMemoryConnector().query({
+      harnessId: context.harnessId,
+      query: input.normalizedPrompt,
+    });
 
     await this.dispatcher.getAuditLogger().log({
       runId: context.runId,
       harnessId: context.harnessId,
       phase: 'ACQUIRE',
       eventType: 'memory_read',
-      payload: { hitCount: memoryHits.length, query: input.normalizedPrompt },
+      payload: { hitCount: memoryHits.length, hits: memoryHits.map(h => ({ type: h.type, score: h.score })), query: input.normalizedPrompt },
     });
 
     const result = await this.run(input, context);

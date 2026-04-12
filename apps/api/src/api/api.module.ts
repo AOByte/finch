@@ -13,6 +13,14 @@ import { HealthController } from './health.controller';
 import { RunsController } from './runs.controller';
 import { TriggerController } from './trigger.controller';
 import { GateController } from './gate.controller';
+import { MemoryController } from './memory.controller';
+import { AgentsController } from './agents.controller';
+import { ConnectorsController } from './connectors.controller';
+import { SkillsController } from './skills.controller';
+import { RulesController } from './rules.controller';
+import { HarnessesController } from './harnesses.controller';
+import { AnalyticsController } from './analytics.controller';
+import { AnalyticsService } from './analytics.service';
 
 @Module({
   imports: [
@@ -27,7 +35,19 @@ import { GateController } from './gate.controller';
     WebSocketModule,
     AuthModule,
   ],
-  controllers: [HealthController, RunsController, TriggerController, GateController],
-  providers: [],
+  controllers: [
+    HealthController,
+    RunsController,
+    TriggerController,
+    GateController,
+    MemoryController,
+    AgentsController,
+    ConnectorsController,
+    SkillsController,
+    RulesController,
+    HarnessesController,
+    AnalyticsController,
+  ],
+  providers: [AnalyticsService],
 })
 export class ApiModule {}

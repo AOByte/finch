@@ -69,7 +69,7 @@ describe('createStubActivities', () => {
     const result = await activities.runPlanPhase(ctx);
     expect(result.hasGap).toBe(false);
     expect(result.runId).toBe('r1');
-    expect(result.steps).toEqual(['stub-step']);
+    expect(result.steps).toEqual([{ description: 'stub-step' }]);
   });
 
   it('resumePlanPhase returns plan with hasGap false', async () => {

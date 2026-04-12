@@ -40,7 +40,7 @@ export class ShipAgentService extends BaseAgent<ShipInput, ShipResult> {
   }
 
   buildInitialMessage(input: ShipInput): string {
-    return `Ship the changes for repo ${input.repoId}.\n\nPlan steps: ${input.plan.steps.join('\n')}\nVerification: ${input.report.allPassing ? 'all passing' : 'some failing'}`;
+    return `Ship the changes for repo ${input.repoId}.\n\nPlan steps: ${input.plan.steps.map(s => s.description).join('\n')}\nVerification: ${input.report.allPassing ? 'all passing' : 'some failing'}`;
   }
 
   buildToolSet(_context: AgentContext): Tool[] {
@@ -85,20 +85,13 @@ export class ShipAgentService extends BaseAgent<ShipInput, ShipResult> {
     context: AgentContext,
   ): Promise<unknown> {
     if (toolName === 'stage_memory') {
-      await this.dispatcher.getMemoryConnector().stageRecord({
+      await this.dispatcher.getMemoryConnector().writeToStaging({
         runId: context.runId,
         harnessId: context.harnessId,
-        type: toolInput['type'] as string,
+        type: toolInput['type'] as import('@finch/types').MemoryType,
         content: toolInput['content'] as string,
         relevanceTags: toolInput['relevanceTags'] as string[],
-      });
-
-      await this.dispatcher.getAuditLogger().log({
-        runId: context.runId,
-        harnessId: context.harnessId,
-        phase: 'SHIP',
-        eventType: 'memory_staged',
-        payload: { type: toolInput['type'] },
+        agentId: context.agentConfig.agentId,
       });
 
       return { staged: true };

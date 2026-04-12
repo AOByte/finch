@@ -54,7 +54,7 @@ describe('PlanAgentService', () => {
       text: JSON.stringify({ runId: 'r1', hasGap: false, steps: ['step1', 'step2'] }),
       content: [], toolUses: [], usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });
-    expect(result.steps).toEqual(['step1', 'step2']);
+    expect(result.steps).toEqual([{ description: 'step1' }, { description: 'step2' }]);
   });
 
   it('parseOutput throws ParseOutputError on invalid JSON', () => {
@@ -70,7 +70,7 @@ describe('PlanAgentService', () => {
       usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });
     expect(result.hasGap).toBe(false);
-    expect(result.steps).toEqual(['plain text plan']);
+    expect(result.steps).toEqual([{ description: 'plain text plan' }]);
   });
 
   it('executeToolCall returns error', async () => {

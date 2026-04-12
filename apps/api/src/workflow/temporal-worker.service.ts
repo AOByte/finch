@@ -7,6 +7,7 @@ import { HarnessRepository } from '../persistence/harness.repository';
 import { GateControllerService } from '../orchestrator/gate-controller.service';
 import { AgentDispatcherService } from '../orchestrator/agent-dispatcher.service';
 import { MemoryConnectorService } from '../memory/memory-connector.service';
+import { MemoryActivities } from '../memory/memory.activities';
 import { TriggerAgentService } from '../agents/trigger-agent.service';
 import { AcquireAgentService } from '../agents/acquire-agent.service';
 import { PlanAgentService } from '../agents/plan-agent.service';
@@ -40,6 +41,7 @@ export class TemporalWorkerService implements OnModuleInit {
     private readonly gateController: GateControllerService,
     private readonly agentDispatcher: AgentDispatcherService,
     private readonly memoryConnector: MemoryConnectorService,
+    private readonly memoryActivities: MemoryActivities,
     private readonly triggerAgent: TriggerAgentService,
     private readonly acquireAgent: AcquireAgentService,
     private readonly planAgent: PlanAgentService,
@@ -170,7 +172,7 @@ export class TemporalWorkerService implements OnModuleInit {
           gapDescription: undefined,
           question: undefined,
           gateId: undefined,
-          steps: [...plan.steps, `[Gate Answer]: ${resolution.answer}`],
+          steps: [...plan.steps, { description: `[Gate Answer]: ${resolution.answer}` }],
         };
       },
 
@@ -227,19 +229,43 @@ export class TemporalWorkerService implements OnModuleInit {
 
       aggregateShipResults: async (
         runId: string,
-        _results: ShipOutcome[],
+        results: ShipOutcome[],
       ): Promise<void> => {
+        // W5-04: Log ship_completed/ship_failed for each repo
+        for (const outcome of results) {
+          if (outcome.status === 'success') {
+            await this.auditLogger.log({
+              runId,
+              eventType: 'ship_completed',
+              payload: { repoId: outcome.repoId, prUrl: outcome.result?.prUrl },
+            });
+          } else {
+            await this.auditLogger.log({
+              runId,
+              eventType: 'ship_failed',
+              payload: { repoId: outcome.repoId, error: outcome.error },
+            });
+          }
+        }
         await this.runRepository.markCompleted(runId);
       },
 
       getRegisteredRepos: async (
-        _harnessId: string,
+        harnessId: string,
       ): Promise<RegisteredRepo[]> => {
-        return [{ repoId: 'default-repo' }];
+        // W5-08: Query harness config for registered repos
+        const harness = await this.harnessRepository.findById(harnessId);
+        const config = harness?.config as Record<string, unknown> | null;
+        const repos = (config?.repositories as Array<{ repoId: string }>) ?? [];
+        if (repos.length === 0) {
+          return [{ repoId: 'default-repo' }];
+        }
+        return repos.map((r) => ({ repoId: r.repoId }));
       },
 
       mergeRunMemory: async (runId: string): Promise<void> => {
-        await this.memoryConnector.mergeRecords(runId);
+        // W5-03: Real MemoryActivities.mergeRunMemory replaces stub
+        await this.memoryActivities.mergeRunMemory(runId);
       },
 
       markRunCompleted: async (runId: string): Promise<void> => {

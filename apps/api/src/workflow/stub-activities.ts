@@ -49,7 +49,7 @@ export function createStubActivities(deps: {
       return {
         runId: _context.runId,
         hasGap: false,
-        steps: ['stub-step'],
+        steps: [{ description: 'stub-step' }],
       };
     },
 

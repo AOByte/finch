@@ -97,7 +97,32 @@ describe('AcquireAgentService', () => {
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_started' }));
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'memory_read' }));
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_completed' }));
-    expect(mockMemoryConnector.query).toHaveBeenCalledWith('h1', 'fix');
+    expect(mockMemoryConnector.query).toHaveBeenCalledWith({ harnessId: 'h1', query: 'fix' });
+  });
+
+  it('runAcquire logs memory hits with type and score when hits exist', async () => {
+    mockMemoryConnector.query.mockResolvedValue([
+      { memoryId: 'm1', type: 'TaskPattern', content: 'fix auth', relevanceTags: [], score: 0.85 },
+      { memoryId: 'm2', type: 'ErrorPattern', content: 'timeout fix', relevanceTags: [], score: 0.72 },
+    ]);
+    mockLLM.complete.mockResolvedValue({
+      text: JSON.stringify({ hasGap: false, files: ['b.ts'], dependencies: [] }),
+      content: [], toolUses: [], usage: { inputTokens: 10, outputTokens: 5 }, stopReason: 'end_turn',
+    });
+
+    const input = { runId: 'r1', harnessId: 'h1', normalizedPrompt: 'fix auth', intent: 'bug', scope: [] };
+    await service.runAcquire(input, makeContext() as never);
+
+    expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({
+      eventType: 'memory_read',
+      payload: expect.objectContaining({
+        hitCount: 2,
+        hits: [
+          { type: 'TaskPattern', score: 0.85 },
+          { type: 'ErrorPattern', score: 0.72 },
+        ],
+      }),
+    }));
   });
 
   it('runAcquire returns GateEvent when gate fired', async () => {

@@ -63,6 +63,18 @@ describe('Module stubs', () => {
     vi.restoreAllMocks();
   });
 
+  it('AuditModule REDIS_PUBLISHER factory returns undefined on connection failure', async () => {
+    const { REDIS_PUBLISHER } = await import('../../src/audit/audit-logger.service');
+    const redis = await import('redis');
+    vi.spyOn(redis, 'createClient').mockReturnValue({
+      connect: vi.fn().mockRejectedValue(new Error('connection refused')),
+    } as never);
+    const mod = await Test.createTestingModule({ imports: [AuditModule] }).compile();
+    const publisher = mod.get(REDIS_PUBLISHER, { strict: false });
+    expect(publisher).toBeUndefined();
+    vi.restoreAllMocks();
+  });
+
   it('ConnectorModule should compile', async () => {
     const mod = await Test.createTestingModule({ imports: [ConnectorModule] }).compile();
     expect(mod).toBeDefined();
@@ -87,6 +99,8 @@ describe('Module stubs', () => {
     const mod = await Test.createTestingModule({ imports: [OrchestratorModule] })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(WorkflowClient)
+      .useValue({})
       .compile();
     expect(mod).toBeDefined();
     const { GateControllerService } = await import('../../src/orchestrator/gate-controller.service');

@@ -48,6 +48,9 @@ describe('TemporalWorkerService', () => {
   const mockMemoryConnector = {
     mergeRecords: vi.fn().mockResolvedValue(undefined),
   };
+  const mockMemoryActivities = {
+    mergeRunMemory: vi.fn().mockResolvedValue(undefined),
+  };
   const mockTriggerAgent = {
     runTrigger: vi.fn(),
   };
@@ -76,6 +79,7 @@ describe('TemporalWorkerService', () => {
       mockGateController as never,
       mockAgentDispatcher as never,
       mockMemoryConnector as never,
+      mockMemoryActivities as never,
       mockTriggerAgent as never,
       mockAcquireAgent as never,
       mockPlanAgent as never,
@@ -225,12 +229,12 @@ describe('TemporalWorkerService', () => {
 
     it('runPlanPhase calls planAgent.runPlan', async () => {
       mockPlanAgent.runPlan.mockResolvedValue({
-        runId: 'r1', hasGap: false, steps: ['step1'],
+        runId: 'r1', hasGap: false, steps: [{ description: 'step1' }],
       });
 
       const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
       const result = await activities.runPlanPhase(context);
-      expect(result.steps).toEqual(['step1']);
+      expect(result.steps).toEqual([{ description: 'step1' }]);
     });
 
     it('runPlanPhase dispatches gate on GateEvent', async () => {
@@ -249,13 +253,13 @@ describe('TemporalWorkerService', () => {
     });
 
     it('resumePlanPhase returns plan with hasGap=false and gate answer in steps', async () => {
-      const plan = { runId: 'r1', hasGap: true, gapDescription: 'missing', question: 'what?', gateId: 'g1', steps: ['step1'] };
+      const plan = { runId: 'r1', hasGap: true, gapDescription: 'missing', question: 'what?', gateId: 'g1', steps: [{ description: 'step1' }] };
       const result = await activities.resumePlanPhase(plan, { gateId: 'g1', requiresPhase: 'PLAN', answer: 'plan answer' });
       expect(result.hasGap).toBe(false);
       expect(result.gapDescription).toBeUndefined();
       expect(result.question).toBeUndefined();
       expect(result.gateId).toBeUndefined();
-      expect(result.steps).toEqual(['step1', '[Gate Answer]: plan answer']);
+      expect(result.steps).toEqual([{ description: 'step1' }, { description: '[Gate Answer]: plan answer' }]);
     });
 
     it('runExecutePhase calls executeAgent.runExecute', async () => {
@@ -327,14 +331,54 @@ describe('TemporalWorkerService', () => {
       expect(mockRunRepository.markCompleted).toHaveBeenCalledWith('r1');
     });
 
-    it('getRegisteredRepos returns default repo', async () => {
+    it('aggregateShipResults logs ship_completed for success outcomes', async () => {
+      await activities.aggregateShipResults('r1', [
+        { repoId: 'repo1', status: 'success', result: { repoId: 'repo1', commitSha: 'abc', prUrl: 'https://pr' } },
+      ]);
+      expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({
+        runId: 'r1',
+        eventType: 'ship_completed',
+        payload: expect.objectContaining({ repoId: 'repo1', prUrl: 'https://pr' }),
+      }));
+    });
+
+    it('aggregateShipResults logs ship_failed for failure outcomes', async () => {
+      await activities.aggregateShipResults('r1', [
+        { repoId: 'repo2', status: 'failure', error: 'build failed' },
+      ]);
+      expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({
+        runId: 'r1',
+        eventType: 'ship_failed',
+        payload: expect.objectContaining({ repoId: 'repo2', error: 'build failed' }),
+      }));
+    });
+
+    it('aggregateShipResults handles mixed success and failure outcomes', async () => {
+      await activities.aggregateShipResults('r1', [
+        { repoId: 'repo1', status: 'success', result: { repoId: 'repo1', commitSha: 'abc' } },
+        { repoId: 'repo2', status: 'failure', error: 'failed' },
+      ]);
+      expect(mockAuditLogger.log).toHaveBeenCalledTimes(2);
+      expect(mockRunRepository.markCompleted).toHaveBeenCalledWith('r1');
+    });
+
+    it('getRegisteredRepos returns default repo when config is empty', async () => {
+      (mockHarnessRepository as Record<string, unknown>).findById = vi.fn().mockResolvedValue({ config: {} });
       const result = await activities.getRegisteredRepos('h1');
       expect(result).toEqual([{ repoId: 'default-repo' }]);
     });
 
-    it('mergeRunMemory calls memoryConnector.mergeRecords', async () => {
+    it('getRegisteredRepos returns configured repos when present', async () => {
+      (mockHarnessRepository as Record<string, unknown>).findById = vi.fn().mockResolvedValue({
+        config: { repositories: [{ repoId: 'repo-a' }, { repoId: 'repo-b' }] },
+      });
+      const result = await activities.getRegisteredRepos('h1');
+      expect(result).toEqual([{ repoId: 'repo-a' }, { repoId: 'repo-b' }]);
+    });
+
+    it('mergeRunMemory calls memoryActivities.mergeRunMemory', async () => {
       await activities.mergeRunMemory('r1');
-      expect(mockMemoryConnector.mergeRecords).toHaveBeenCalledWith('r1');
+      expect(mockMemoryActivities.mergeRunMemory).toHaveBeenCalledWith('r1');
     });
 
     it('markRunCompleted calls runRepository.markCompleted', async () => {
