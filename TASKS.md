@@ -23,7 +23,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 - [x] **W1-03** — Write `infra/healthcheck.sh`. Must check: `finch-postgres` accepts connections, `finch-redis` responds to PING, `finch-temporal-ui` returns HTTP 200 at `http://localhost:8080`. Exit 0 only when all three pass. Exit 1 with a message identifying which service failed. Verify: `docker compose -f infra/docker-compose.yml up -d` then `bash infra/healthcheck.sh` exits 0.
 
-- [ ] **W1-04** — Scaffold `apps/api` as a NestJS 10 application. Configure `tsconfig.json` with `strict: true`, `strictNullChecks: true`. Install all dependencies from the tech stack table in AGENTS.md section 5. API runs on port 3001.
+- [x] **W1-04** — Scaffold `apps/api` as a NestJS 10 application. Configure `tsconfig.json` with `strict: true`, `strictNullChecks: true`. Install all dependencies from the tech stack table in AGENTS.md section 5. API runs on port 3001.
 
 - [ ] **W1-05** — Create all NestJS module stub files per the module tree in AGENTS.md section 7. Each file must exist, export its module class, and be imported into `AppModule`. No logic in any module yet — stubs only. Modules required: `OrchestratorModule`, `WorkflowModule`, `AgentModule`, `ConnectorModule`, `LLMModule`, `MemoryModule`, `AuditModule`, `PersistenceModule`, `WebSocketModule`, `AuthModule`, `ApiModule`. Verify: `pnpm --filter api exec tsc --noEmit` passes with all modules wired.
 
