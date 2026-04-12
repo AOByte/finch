@@ -32,6 +32,8 @@ describe('TemporalWorkerService', () => {
     vi.clearAllMocks();
     runRepo = { markCompleted: vi.fn() };
     service = new TemporalWorkerService(runRepo as unknown as RunRepository);
+    // Mock getWorkflowsPath so tests don't need compiled dist/ files
+    vi.spyOn(service, 'getWorkflowsPath').mockReturnValue('/mocked/path/finch.workflow');
   });
 
   afterEach(() => {
@@ -41,6 +43,13 @@ describe('TemporalWorkerService', () => {
   it('is injectable and has onModuleInit', () => {
     expect(service).toBeDefined();
     expect(typeof service.onModuleInit).toBe('function');
+  });
+
+  it('getWorkflowsPath returns path ending with finch.workflow', () => {
+    // Call the real method (not the mock) to cover it
+    const realService = new TemporalWorkerService(runRepo as unknown as RunRepository);
+    const p = realService.getWorkflowsPath();
+    expect(p).toContain('finch.workflow');
   });
 
   it('connects to default address and starts worker on onModuleInit', async () => {
