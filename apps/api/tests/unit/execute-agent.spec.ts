@@ -37,7 +37,7 @@ describe('ExecuteAgentService', () => {
 
   it('buildInitialMessage includes plan steps and files', () => {
     const msg = service.buildInitialMessage({
-      plan: { runId: 'r1', hasGap: false, steps: ['step1', 'step2'] },
+      plan: { runId: 'r1', hasGap: false, steps: [{ description: 'step1' }, { description: 'step2' }] },
       context: { runId: 'r1', harnessId: 'h1', hasGap: false, files: ['a.ts', 'b.ts'], dependencies: [] },
     });
     expect(msg).toContain('step1');
@@ -86,7 +86,7 @@ describe('ExecuteAgentService', () => {
       content: [], toolUses: [], usage: { inputTokens: 10, outputTokens: 5 }, stopReason: 'end_turn',
     });
 
-    const plan = { runId: 'r1', hasGap: false, steps: ['step1'] };
+    const plan = { runId: 'r1', hasGap: false, steps: [{ description: 'step1' }] };
     const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
     const result = await service.runExecute(plan, context, makeContext() as never);
 
@@ -103,7 +103,7 @@ describe('ExecuteAgentService', () => {
       usage: { inputTokens: 10, outputTokens: 5 },
     });
 
-    const plan = { runId: 'r1', hasGap: false, steps: [] };
+    const plan = { runId: 'r1', hasGap: false, steps: [] as { description: string }[] };
     const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
     const result = await service.runExecute(plan, context, makeContext() as never);
     expect(result).toBeInstanceOf(GateEvent);

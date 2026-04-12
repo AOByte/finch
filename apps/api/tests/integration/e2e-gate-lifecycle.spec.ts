@@ -21,6 +21,7 @@ import { AgentDispatcherService } from '../../src/orchestrator/agent-dispatcher.
 import { RuleEnforcementService } from '../../src/orchestrator/rule-enforcement.service';
 import { LLMRegistryService } from '../../src/llm/llm-registry.service';
 import { MemoryConnectorService } from '../../src/memory/memory-connector.service';
+import { EmbeddingService } from '../../src/memory/embedding.service';
 import { AgentConfigService } from '../../src/agents/agent-config.service';
 import { TriggerAgentService } from '../../src/agents/trigger-agent.service';
 import { AcquireAgentService } from '../../src/agents/acquire-agent.service';
@@ -282,8 +283,9 @@ beforeAll(async () => {
   llmRegistry = new LLMRegistryService(configService as never);
   llmRegistry.register('anthropic', mockLLM);
 
-  // Services
-  memoryConnector = new MemoryConnectorService();
+  // Services — mock embedding service for integration tests (no real OpenAI calls)
+  const mockEmbeddingService = { embed: async () => new Array(1536).fill(0.01) } as unknown as EmbeddingService;
+  memoryConnector = new MemoryConnectorService(ps, mockEmbeddingService, auditLogger);
   const agentConfigService = new AgentConfigService(ps);
   ruleEnforcement = new RuleEnforcementService(llmRegistry);
 
@@ -377,7 +379,7 @@ describe('Scenario 1: Happy path — no gates fired', () => {
     const planArtifact: PlanArtifact = {
       runId,
       hasGap: false,
-      steps: ['Edit validator.ts', 'Fix regex', 'Run tests'],
+      steps: [{ description: 'Edit validator.ts' }, { description: 'Fix regex' }, { description: 'Run tests' }],
     };
     mockLLM.enqueueJson(planArtifact);
     const planCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
@@ -596,7 +598,7 @@ describe('Scenario 4: Gate E fires in EXECUTE', () => {
 
     mockLLM.enqueueGate('Cannot find test file', 'Where is the test file for payments?');
     const executeCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Run tests'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'Run tests' }] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,
       hasGap: false, files: [], dependencies: [],
@@ -662,7 +664,7 @@ describe('Scenario 5: Resume activities incorporate gate answers', () => {
   it('resumePlanPhase appends gate answer to steps', () => {
     const plan: PlanArtifact = {
       runId: 'r1', hasGap: true, gapDescription: 'missing', question: 'what?', gateId: 'g1',
-      steps: ['step1', 'step2'],
+      steps: [{ description: 'step1' }, { description: 'step2' }],
     };
     const resolution: GateResolution = { gateId: 'g1', requiresPhase: 'PLAN', answer: 'do step3' };
 
@@ -672,11 +674,11 @@ describe('Scenario 5: Resume activities incorporate gate answers', () => {
       gapDescription: undefined,
       question: undefined,
       gateId: undefined,
-      steps: [...plan.steps, `[Gate Answer]: ${resolution.answer}`],
+      steps: [...plan.steps, { description: `[Gate Answer]: ${resolution.answer}` }],
     };
 
     expect(result.hasGap).toBe(false);
-    expect(result.steps).toEqual(['step1', 'step2', '[Gate Answer]: do step3']);
+    expect(result.steps).toEqual([{ description: 'step1' }, { description: 'step2' }, { description: '[Gate Answer]: do step3' }]);
   });
 
   it('resumeExecutePhase appends gate answer to results', () => {
@@ -918,7 +920,7 @@ describe('Scenario 8: Multi-gate sequence — ACQUIRE gate then PLAN gate', () =
     // PLAN re-run succeeds
     mockLLM.enqueueJson({
       runId, hasGap: false,
-      steps: ['Add index on users.email', 'Optimize JOIN query'],
+      steps: [{ description: 'Add index on users.email' }, { description: 'Optimize JOIN query' }],
     });
     const planCtx2 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
     const context: ContextObject = {
@@ -1204,14 +1206,14 @@ describe('Scenario 15: Ship agent stage_memory tool call', () => {
           type: 'tool_use',
           id: 'tu-stage',
           name: 'stage_memory',
-          input: { type: 'code_pattern', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
+          input: { type: 'FileConvention', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
         },
       ],
       toolUses: [
         {
           id: 'tu-stage',
           name: 'stage_memory',
-          input: { type: 'code_pattern', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
+          input: { type: 'FileConvention', content: 'Use pg pool', relevanceTags: ['db', 'optimization'] },
         },
       ],
       usage: { inputTokens: 100, outputTokens: 20 },
@@ -1221,7 +1223,7 @@ describe('Scenario 15: Ship agent stage_memory tool call', () => {
     mockLLM.enqueueJson({ repoId: 'default-repo', commitSha: 'ship123' });
 
     const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Optimize'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'Optimize' }] };
     const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,
@@ -1319,7 +1321,7 @@ describe('Scenario 17: Full pipeline Trigger → Acquire → Plan → Execute �
     // PLAN
     mockLLM.enqueueJson({
       runId, hasGap: false,
-      steps: ['Create ThemeProvider', 'Add toggle component', 'Update CSS variables'],
+      steps: [{ description: 'Create ThemeProvider' }, { description: 'Add toggle component' }, { description: 'Update CSS variables' }],
     });
     const planCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
     const planResult = await planAgent.runPlan(context, planCtx);
@@ -1622,7 +1624,7 @@ describe('Scenario 24: Gate E backward to ACQUIRE (deepest traversal)', () => {
 
     mockLLM.enqueueGate('Completely wrong codebase', 'Which repository should I be working in?');
     const executeCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Deploy'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'Deploy' }] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,
       hasGap: false, files: [], dependencies: [],
@@ -1683,7 +1685,7 @@ describe('Scenario 25: Cascading traversal — E→ACQUIRE then PLAN gate', () =
     const context = acquireResult as ContextObject;
 
     // PLAN succeeds
-    mockLLM.enqueueJson({ runId, hasGap: false, steps: ['Extract auth middleware'] });
+    mockLLM.enqueueJson({ runId, hasGap: false, steps: [{ description: 'Extract auth middleware' }] });
     const planCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
     const planResult = await planAgent.runPlan(context, planCtx);
     const plan = planResult as PlanArtifact;
@@ -1727,7 +1729,7 @@ describe('Scenario 25: Cascading traversal — E→ACQUIRE then PLAN gate', () =
     expect(planResolution.requiresPhase).toBe('PLAN');
 
     // Re-run PLAN — succeeds
-    mockLLM.enqueueJson({ runId, hasGap: false, steps: ['Extract auth middleware', 'Add JWT support'] });
+    mockLLM.enqueueJson({ runId, hasGap: false, steps: [{ description: 'Extract auth middleware' }, { description: 'Add JWT support' }] });
     const planCtx3 = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'PLAN', source);
     const planResult3 = await planAgent.runPlan(context2, planCtx3);
     expect(planResult3).not.toBeInstanceOf(GateEvent);
@@ -1889,17 +1891,17 @@ describe('Scenario 29: Agent loop with non-fire_gate tool calls', () => {
 
     // First LLM call: stage_memory tool_use
     mockLLM.enqueueToolUse('stage_memory', {
-      type: 'code_pattern', content: 'Use connection pooling', relevanceTags: ['db'],
+      type: 'FileConvention', content: 'Use connection pooling', relevanceTags: ['db'],
     });
     // Second LLM call: another stage_memory
     mockLLM.enqueueToolUse('stage_memory', {
-      type: 'decision', content: 'Chose PostgreSQL over MySQL', relevanceTags: ['architecture'],
+      type: 'TeamConvention', content: 'Chose PostgreSQL over MySQL', relevanceTags: ['architecture'],
     });
     // Third LLM call: end_turn with result
     mockLLM.enqueueJson({ repoId: 'default-repo', commitSha: 'multi-tool-abc' });
 
     const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Ship it'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'Ship it' }] };
     const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,
@@ -2008,7 +2010,7 @@ describe('Scenario 31: Gate snapshot shape — GateESnapshot', () => {
   it('EXECUTE gate snapshot includes executionProgress and planArtifact', async () => {
     await createTestRun(runId);
     const source = buildSource(runId);
-    const inputPlan: PlanArtifact = { runId, hasGap: false, steps: ['Step 1'] };
+    const inputPlan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'Step 1' }] };
 
     dispatcher.registerPhaseRunner('EXECUTE', async (_input, ctx) => {
       return new GateEvent({
@@ -2091,34 +2093,55 @@ describe('Scenario 32: Resume from snapshot — agent_skipped_on_resume events',
 // ─── Scenario 33: Memory merge after Ship phase ──────────────────────────────
 
 describe('Scenario 33: Memory merge after Ship phase', () => {
-  it('memoryConnector.mergeRecords is callable and does not throw', async () => {
-    // mergeRecords is a stub (no-op) but verifies the contract
-    await expect(memoryConnector.mergeRecords('test-run-id')).resolves.toBeUndefined();
+  it('memoryConnector.getStagingRecords returns empty for unknown runId', async () => {
+    const records = await memoryConnector.getStagingRecords('00000000-0000-0000-0000-000000000099');
+    expect(records).toEqual([]);
   });
 
   it('stageRecord then mergeRecords flow works end-to-end', async () => {
     // Stage some records
-    await memoryConnector.stageRecord({
-      runId: 'merge-test',
+    const mergeRunId = uuidv4();
+    // Create a run record for the merge test
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO runs (run_id, harness_id, temporal_workflow_id, status, current_phase)
+       VALUES ($1::uuid, $2::uuid, 'merge-wf', 'RUNNING', 'SHIP')`,
+      mergeRunId,
+      WELL_KNOWN_HARNESS_ID,
+    );
+
+    await memoryConnector.writeToStaging({
+      runId: mergeRunId,
       harnessId: WELL_KNOWN_HARNESS_ID,
-      type: 'code_pattern',
+      type: 'FileConvention',
       content: 'Use async/await',
       relevanceTags: ['patterns'],
+      agentId: 'ship-default',
     });
-    await memoryConnector.stageRecord({
-      runId: 'merge-test',
+    await memoryConnector.writeToStaging({
+      runId: mergeRunId,
       harnessId: WELL_KNOWN_HARNESS_ID,
-      type: 'decision',
+      type: 'TeamConvention',
       content: 'Chose NestJS',
       relevanceTags: ['architecture'],
+      agentId: 'ship-default',
     });
 
-    // Merge should succeed (stub is no-op)
-    await expect(memoryConnector.mergeRecords('merge-test')).resolves.toBeUndefined();
+    // Get staging records and merge them
+    const staged = await memoryConnector.getStagingRecords(mergeRunId);
+    expect(staged.length).toBe(2);
 
-    // Query returns empty (stub)
-    const hits = await memoryConnector.query(WELL_KNOWN_HARNESS_ID, 'anything');
-    expect(hits).toEqual([]);
+    for (const record of staged) {
+      await memoryConnector.mergeRecord(record);
+    }
+
+    // Clear staging
+    await memoryConnector.clearStaging(mergeRunId);
+    const remaining = await memoryConnector.getStagingRecords(mergeRunId);
+    expect(remaining.length).toBe(0);
+
+    // Query with semantic search
+    const hits = await memoryConnector.query({ harnessId: WELL_KNOWN_HARNESS_ID, query: 'async patterns' });
+    expect(Array.isArray(hits)).toBe(true);
   });
 });
 
@@ -2175,7 +2198,7 @@ describe('Scenario 34: Gate in TRIGGER/SHIP — blocked by BaseAgent guard', () 
     });
 
     const shipCtx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['Deploy'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'Deploy' }] };
     const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,
@@ -2309,7 +2332,7 @@ describe('Scenario 35: parseOutput fallback with audit events and retry (W4-00b)
     expect(result).not.toBeInstanceOf(GateEvent);
     const plan = result as PlanArtifact;
     expect(plan.hasGap).toBe(false);
-    expect(plan.steps).toEqual(['Still not JSON plan']);
+    expect(plan.steps).toEqual([{ description: 'Still not JSON plan' }]);
   });
 
   it('ExecuteAgent returns allPassing=false on parse failure (W4-00b safety)', async () => {
@@ -2333,7 +2356,7 @@ describe('Scenario 35: parseOutput fallback with audit events and retry (W4-00b)
     });
 
     const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'EXECUTE', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['test'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'test' }] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,
       hasGap: false, files: [], dependencies: [],
@@ -2374,7 +2397,7 @@ describe('Scenario 35: parseOutput fallback with audit events and retry (W4-00b)
     });
 
     const ctx = buildAgentContext(runId, WELL_KNOWN_HARNESS_ID, 'SHIP', source);
-    const plan: PlanArtifact = { runId, hasGap: false, steps: ['test'] };
+    const plan: PlanArtifact = { runId, hasGap: false, steps: [{ description: 'test' }] };
     const report: VerificationReport = { runId, hasGap: false, allPassing: true, results: ['ok'] };
     const context: ContextObject = {
       runId, harnessId: WELL_KNOWN_HARNESS_ID,

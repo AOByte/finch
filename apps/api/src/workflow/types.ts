@@ -29,6 +29,12 @@ export interface ContextObject {
   gateId?: string;
   files: string[];
   dependencies: string[];
+  repoMap?: Record<string, string[]>;
+}
+
+export interface PlanStep {
+  description: string;
+  repoId?: string;
 }
 
 export interface PlanArtifact {
@@ -37,7 +43,7 @@ export interface PlanArtifact {
   gapDescription?: string;
   question?: string;
   gateId?: string;
-  steps: string[];
+  steps: PlanStep[];
 }
 
 export interface VerificationReport {

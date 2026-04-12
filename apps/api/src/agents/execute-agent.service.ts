@@ -38,7 +38,7 @@ export class ExecuteAgentService extends BaseAgent<ExecuteInput, VerificationRep
   }
 
   buildInitialMessage(input: ExecuteInput): string {
-    return `Execute the following plan steps and produce a verification report.\n\nSteps: ${input.plan.steps.join('\n')}\nFiles: ${input.context.files.join(', ')}`;
+    return `Execute the following plan steps and produce a verification report.\n\nSteps: ${input.plan.steps.map(s => s.description).join('\n')}\nFiles: ${input.context.files.join(', ')}`;
   }
 
   buildToolSet(_context: AgentContext): Tool[] {

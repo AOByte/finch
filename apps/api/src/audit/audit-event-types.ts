@@ -9,6 +9,7 @@ export const CRITICAL_AUDIT_EVENT_TYPES = [
   'phase_completed',
   'run_completed',
   'run_failed',
+  'run_stopped',
   'gate_traversal_backward',
 ] as const;
 
@@ -18,6 +19,10 @@ export const NON_CRITICAL_AUDIT_EVENT_TYPES = [
   'llm_call',
   'memory_staged',
   'memory_read',
+  'memory_merged',
+  'ship_completed',
+  'ship_failed',
+  'connector_queried',
   'verification_run',
   'verification_result',
   'rule_deviation',

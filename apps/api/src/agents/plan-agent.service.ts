@@ -9,7 +9,7 @@ import type {
   Tool,
   AuditEventData,
 } from '@finch/types';
-import type { ContextObject, PlanArtifact } from '../workflow/types';
+import type { ContextObject, PlanArtifact, PlanStep } from '../workflow/types';
 import { AgentDispatcherService } from '../orchestrator/agent-dispatcher.service';
 
 @Injectable()
@@ -55,7 +55,14 @@ export class PlanAgentService extends BaseAgent<ContextObject, PlanArtifact> {
 
   parseOutput(response: LLMResponse): PlanArtifact {
     try {
-      return JSON.parse(response.text) as PlanArtifact;
+      const parsed = JSON.parse(response.text);
+      // Normalize string steps to PlanStep objects
+      if (Array.isArray(parsed.steps)) {
+        parsed.steps = parsed.steps.map((s: string | PlanStep) =>
+          typeof s === 'string' ? { description: s } : s,
+        );
+      }
+      return parsed as PlanArtifact;
     } catch (err) {
       throw new ParseOutputError(
         `PlanAgent failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
@@ -67,7 +74,7 @@ export class PlanAgentService extends BaseAgent<ContextObject, PlanArtifact> {
     return {
       runId: '',
       hasGap: false,
-      steps: [response.text],
+      steps: [{ description: response.text }],
     };
   }
 
@@ -104,7 +111,7 @@ export class PlanAgentService extends BaseAgent<ContextObject, PlanArtifact> {
       harnessId: context.harnessId,
       phase: 'PLAN',
       eventType: 'phase_completed',
-      payload: { stepCount: plan.steps.length },
+      payload: { stepCount: plan.steps.length, steps: plan.steps.map((s: PlanStep) => ({ description: s.description, repoId: s.repoId })) },
     });
 
     return plan;
