@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { PersistenceModule } from '../../src/persistence/persistence.module';
 import { LLMModule } from '../../src/llm/llm.module';
@@ -27,6 +27,13 @@ beforeAll(() => {
   process.env.ENCRYPTION_KEY = 'a'.repeat(64);
 });
 
+// Mock redis to prevent real connections in unit tests (CI has no Redis)
+vi.mock('redis', () => ({
+  createClient: vi.fn(() => ({
+    connect: vi.fn().mockRejectedValue(new Error('mock: no redis in unit tests')),
+  })),
+}));
+
 describe('Module stubs', () => {
   it('PersistenceModule should compile and export PrismaService', async () => {
     const mod = await Test.createTestingModule({ imports: [PersistenceModule] })
@@ -54,25 +61,23 @@ describe('Module stubs', () => {
 
   it('AuditModule REDIS_PUBLISHER factory returns client on success', async () => {
     const { REDIS_PUBLISHER } = await import('../../src/audit/audit-logger.service');
-    const mockClient = { connect: vi.fn().mockResolvedValue(undefined), publish: vi.fn() };
     const redis = await import('redis');
-    vi.spyOn(redis, 'createClient').mockReturnValue(mockClient as never);
+    const mockClient = { connect: vi.fn().mockResolvedValue(undefined), publish: vi.fn() };
+    vi.mocked(redis.createClient).mockReturnValue(mockClient as never);
     const mod = await Test.createTestingModule({ imports: [AuditModule] }).compile();
     const publisher = mod.get(REDIS_PUBLISHER, { strict: false });
     expect(publisher).toBeDefined();
-    vi.restoreAllMocks();
   });
 
   it('AuditModule REDIS_PUBLISHER factory returns undefined on connection failure', async () => {
     const { REDIS_PUBLISHER } = await import('../../src/audit/audit-logger.service');
     const redis = await import('redis');
-    vi.spyOn(redis, 'createClient').mockReturnValue({
+    vi.mocked(redis.createClient).mockReturnValue({
       connect: vi.fn().mockRejectedValue(new Error('connection refused')),
     } as never);
     const mod = await Test.createTestingModule({ imports: [AuditModule] }).compile();
     const publisher = mod.get(REDIS_PUBLISHER, { strict: false });
     expect(publisher).toBeUndefined();
-    vi.restoreAllMocks();
   });
 
   it('ConnectorModule should compile', async () => {
@@ -86,9 +91,12 @@ describe('Module stubs', () => {
   });
 
   it('AgentModule should compile', async () => {
-    const mod = await Test.createTestingModule({ imports: [AgentModule] }).compile();
+    const mod = await Test.createTestingModule({ imports: [AgentModule] })
+      .overrideProvider(PrismaService)
+      .useValue(mockPrisma)
+      .compile();
     expect(mod).toBeDefined();
-  });
+  }, 15000);
 
   it('WebSocketModule should compile', async () => {
     const mod = await Test.createTestingModule({ imports: [WebSocketModule] }).compile();

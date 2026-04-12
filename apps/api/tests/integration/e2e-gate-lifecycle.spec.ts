@@ -2094,14 +2094,23 @@ describe('Scenario 32: Resume from snapshot — agent_skipped_on_resume events',
 
 describe('Scenario 33: Memory merge after Ship phase', () => {
   it('memoryConnector.getStagingRecords returns empty for unknown runId', async () => {
-    const records = await memoryConnector.getStagingRecords('nonexistent-run-id');
+    const records = await memoryConnector.getStagingRecords('00000000-0000-0000-0000-000000000099');
     expect(records).toEqual([]);
   });
 
   it('stageRecord then mergeRecords flow works end-to-end', async () => {
     // Stage some records
+    const mergeRunId = uuidv4();
+    // Create a run record for the merge test
+    await prisma.$executeRawUnsafe(
+      `INSERT INTO runs (run_id, harness_id, temporal_workflow_id, status, current_phase)
+       VALUES ($1::uuid, $2::uuid, 'merge-wf', 'RUNNING', 'SHIP')`,
+      mergeRunId,
+      WELL_KNOWN_HARNESS_ID,
+    );
+
     await memoryConnector.writeToStaging({
-      runId: 'merge-test',
+      runId: mergeRunId,
       harnessId: WELL_KNOWN_HARNESS_ID,
       type: 'FileConvention',
       content: 'Use async/await',
@@ -2109,7 +2118,7 @@ describe('Scenario 33: Memory merge after Ship phase', () => {
       agentId: 'ship-default',
     });
     await memoryConnector.writeToStaging({
-      runId: 'merge-test',
+      runId: mergeRunId,
       harnessId: WELL_KNOWN_HARNESS_ID,
       type: 'TeamConvention',
       content: 'Chose NestJS',
@@ -2118,7 +2127,7 @@ describe('Scenario 33: Memory merge after Ship phase', () => {
     });
 
     // Get staging records and merge them
-    const staged = await memoryConnector.getStagingRecords('merge-test');
+    const staged = await memoryConnector.getStagingRecords(mergeRunId);
     expect(staged.length).toBe(2);
 
     for (const record of staged) {
@@ -2126,8 +2135,8 @@ describe('Scenario 33: Memory merge after Ship phase', () => {
     }
 
     // Clear staging
-    await memoryConnector.clearStaging('merge-test');
-    const remaining = await memoryConnector.getStagingRecords('merge-test');
+    await memoryConnector.clearStaging(mergeRunId);
+    const remaining = await memoryConnector.getStagingRecords(mergeRunId);
     expect(remaining.length).toBe(0);
 
     // Query with semantic search
@@ -2323,7 +2332,7 @@ describe('Scenario 35: parseOutput fallback with audit events and retry (W4-00b)
     expect(result).not.toBeInstanceOf(GateEvent);
     const plan = result as PlanArtifact;
     expect(plan.hasGap).toBe(false);
-    expect(plan.steps).toEqual(['Still not JSON plan']);
+    expect(plan.steps).toEqual([{ description: 'Still not JSON plan' }]);
   });
 
   it('ExecuteAgent returns allPassing=false on parse failure (W4-00b safety)', async () => {
