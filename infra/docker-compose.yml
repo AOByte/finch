@@ -31,7 +31,8 @@ services:
     image: temporalio/auto-setup:1.24
     container_name: finch-temporal
     environment:
-      DB: postgresql
+      DB: postgres12
+      DB_PORT: 5432
       POSTGRES_USER: finch
       POSTGRES_PWD: finch
       POSTGRES_SEEDS: finch-postgres
