@@ -213,6 +213,15 @@ AppModule
 │   ├── GitHubAcquireConnectorService
 │   ├── GitHubExecuteConnectorService
 │   └── GitHubShipConnectorService
+├── MCPModule
+│   ├── MCPRegistryService
+│   └── MCPServerFactory
+│       ├── JiraMCPServer
+│       ├── GitHubMCPServer
+│       └── SlackMCPServer
+├── ConnectorSettingsModule
+│   ├── ConnectorSettingsService
+│   └── ConnectorSettingsController
 ├── LLMModule
 │   ├── LLMRegistryService
 │   ├── AnthropicConnectorService

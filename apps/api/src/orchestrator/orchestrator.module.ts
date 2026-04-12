@@ -6,6 +6,7 @@ import { MemoryModule } from '../memory/memory.module';
 import { AuditModule } from '../audit/audit.module';
 import { PersistenceModule } from '../persistence/persistence.module';
 import { LLMModule } from '../llm/llm.module';
+import { MCPModule } from '../mcp/mcp.module';
 import { GateControllerService } from './gate-controller.service';
 import { AgentDispatcherService } from './agent-dispatcher.service';
 import { RuleEnforcementService } from './rule-enforcement.service';
@@ -19,6 +20,7 @@ import { GateTimeoutProcessor } from './gate-timeout.processor';
     AuditModule,
     PersistenceModule,
     LLMModule,
+    MCPModule,
     BullModule.registerQueue({ name: 'gate-timeout' }),
   ],
   providers: [GateControllerService, AgentDispatcherService, RuleEnforcementService, GateTimeoutProcessor],

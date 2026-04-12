@@ -49,6 +49,7 @@ Task arrives (Slack / Webhook / Cron)
 - **Semantic Memory** — Vector-based knowledge store that accumulates across runs, reducing gate frequency over time
 - **Durable Execution** — Temporal-backed workflows survive crashes and resume from exact point of suspension
 - **Multi-Agent Pipelines** — Configure multiple agents per phase; each enriches the canonical artifact and passes it forward
+- **MCP Tool Discovery** — Agents discover and call external tools (Jira, GitHub, Slack) via Model Context Protocol with phase-scoped permissions
 - **Connector System** — Pluggable integrations for Slack, Jira, GitHub, and any LLM provider
 - **Complete Audit Trail** — Append-only log of every phase transition, gate firing, agent decision, and artifact handoff
 - **Backward Traversal** — Gate resolutions can route back to earlier phases when new information warrants it
@@ -81,6 +82,8 @@ AppModule
 ├── WorkflowModule        — Temporal worker and workflow definitions
 ├── AgentModule           — TAPES phase agents and agent configuration
 ├── ConnectorModule       — Slack, GitHub, Jira, Webhook, Cron integrations
+├── MCPModule             — MCP registry, server factory, tool discovery
+├── ConnectorSettingsModule — MCP server CRUD + health checks
 ├── LLMModule             — Anthropic Claude + OpenAI provider registry
 ├── MemoryModule          — Vector memory, staging, embeddings
 ├── AuditModule           — Append-only audit event logger
@@ -109,6 +112,7 @@ AppModule
 | **WebSocket** | Socket.io | Real-time harness-scoped event distribution |
 | **LLM** | Anthropic SDK + OpenAI SDK | Claude and GPT model integration |
 | **Integrations** | Slack Bolt, Octokit, jira.js | Trigger, context, execution, and shipping |
+| **MCP** | Model Context Protocol | Dynamic tool discovery for agents per phase |
 | **Testing** | Vitest + Supertest | Unit and integration testing with 100% coverage |
 | **Logging** | Pino | Structured JSON logs |
 | **CI/CD** | GitHub Actions | Lint, typecheck, test, and build pipeline |
@@ -186,12 +190,12 @@ pnpm --filter web dev
 
 ## Testing
 
-Finch has **100% code coverage** across both backend and frontend.
+Finch has **100% line coverage** across both backend and frontend.
 
 ### Unit Tests
 
 ```bash
-# Backend (20 tests)
+# Backend (505 tests)
 pnpm --filter api test run
 
 # Frontend (6 tests)
@@ -203,7 +207,7 @@ pnpm --filter web test run
 Requires running PostgreSQL infrastructure:
 
 ```bash
-pnpm --filter api test:integration    # 31 tests against live PostgreSQL
+pnpm --filter api test:integration    # 30 MCP e2e tests + integration suite
 ```
 
 ### Coverage Reports
@@ -218,7 +222,7 @@ cd apps/web && npx vitest run --coverage
 
 | Target | Statements | Branches | Functions | Lines |
 |--------|-----------|----------|-----------|-------|
-| **api** | 100% (33/33) | 100% (2/2) | 100% (4/4) | 100% (33/33) |
+| **api** | 99.92% (1259/1260) | 93.34% (505/541) | 99.01% (303/306) | 100% (1217/1217) |
 | **web** | 100% (8/8) | 100% (0/0) | 100% (2/2) | 100% (8/8) |
 
 ### Type Checking
@@ -242,6 +246,8 @@ finch/
 │   │   │   ├── audit/          # Append-only audit logger
 │   │   │   ├── auth/           # JWT authentication
 │   │   │   ├── connectors/     # Slack, GitHub, Jira integrations
+│   │   │   ├── connector-settings/ # MCP server CRUD + health checks
+│   │   │   ├── mcp/            # MCP registry, server factory, adapters
 │   │   │   ├── llm/            # LLM provider registry
 │   │   │   ├── memory/         # Vector memory + embeddings
 │   │   │   ├── orchestrator/   # Gate control + agent dispatch
@@ -292,6 +298,7 @@ Finch uses **PostgreSQL 16** with the **pgvector** extension for semantic memory
 | `audit_events` | Immutable append-only audit trail |
 | `memories` | Vector embeddings for semantic memory |
 | `memory_staging` | Per-run memory before final commit at Ship |
+| `mcp_servers` | MCP server registrations per harness |
 | `connector_configs` | Integration credentials and settings |
 | `rules` | Behavioral constraints (hard/soft, path/semantic) |
 | `skills` | Domain knowledge modules for agent injection |

@@ -42,6 +42,7 @@ model Harness {
   runs         Run[]
   gateEvents   GateEvent[]
   connectors   Connector[]
+  mcpServers   McpServer[]
   agentConfigs AgentConfig[]
   skills       Skill[]
   rules        Rule[]
@@ -139,6 +140,23 @@ model Connector {
   harness        Harness  @relation(fields: [harnessId], references: [harnessId])
 
   @@map("connectors")
+}
+
+model McpServer {
+  mcpServerId     String    @id @default(dbgenerated("gen_random_uuid()")) @map("mcp_server_id") @db.Uuid
+  harnessId       String    @map("harness_id") @db.Uuid
+  serverType      String    @map("server_type")
+  displayName     String    @map("display_name")
+  configEncrypted String    @map("config_encrypted")
+  isActive        Boolean   @default(true) @map("is_active")
+  healthStatus    String    @default("unknown") @map("health_status")
+  lastHealthCheck DateTime? @map("last_health_check") @db.Timestamptz()
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  harness         Harness   @relation(fields: [harnessId], references: [harnessId])
+
+  @@index([harnessId, isActive], map: "mcp_servers_harness")
+  @@map("mcp_servers")
 }
 
 model AgentConfig {

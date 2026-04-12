@@ -28,6 +28,7 @@ export const NON_CRITICAL_AUDIT_EVENT_TYPES = [
   'gate_resumed',
   'agent_anomaly',
   'parse_output_fallback',
+  'mcp_tool_call',
 ] as const;
 
 export const REQUIRED_AUDIT_EVENT_TYPES = [

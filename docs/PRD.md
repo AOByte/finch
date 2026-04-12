@@ -595,8 +595,14 @@ Slack TriggerConnector, Jira AcquireConnector, GitHub AcquireConnector, GitHub E
 **Milestone 4 — Multi-Repository Support**
 Repo registration in harness config. Repo map construction in AcquireAgent. Repo assignment on PlanArtifact sub-tasks. Multi-connector Execute. Parallel ShipAgent fan-out.
 
-**Milestone 5 — Memory System**
+**Milestone 5A — MCP Core Infrastructure**
+MCPRegistryService, MCPServerFactory, built-in MCP servers (Jira, GitHub, Slack) wrapping existing Wave 4 connectors. Phase-filtered tool discovery — read tools in all phases, write tools restricted to EXECUTE/SHIP per FC-04. `mcp_tool_call` audit events. ConnectorSettingsService for server CRUD. ConnectorRegistryService preserved for gate delivery.
+
+**Milestone 5B — Memory System**
 MemoryRecord schema and embedding pipeline. Semantic query interface. Mid-cycle memory writes. Per-run staging area. Merge at Ship. Memory browser in UI.
+
+**Milestone 5C — OAuth + Custom MCP Servers**
+Jira Connect / GitHub App OAuth flows. User-provided custom MCP servers. OAuth token refresh and storage.
 
 **Milestone 6 — Web UI and Observability**
 Dashboard, run detail view, gate response UI, stop execution control, connector config UI, agent pipeline config UI, LLM config UI, memory browser, analytics.

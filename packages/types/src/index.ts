@@ -186,3 +186,33 @@ export interface AuditEventData {
   actor?: Record<string, unknown>;
   payload?: Record<string, unknown>;
 }
+
+// --- Wave 5A: MCP types ---
+
+export type MCPToolPermission = 'read' | 'write';
+
+export interface MCPTool {
+  name: string;
+  description: string;
+  inputSchema: Record<string, unknown>;
+  permission: MCPToolPermission;
+}
+
+export interface MCPServer {
+  readonly serverId: string;
+  readonly displayName: string;
+  listTools(): MCPTool[];
+  executeTool(toolName: string, input: Record<string, unknown>): Promise<unknown>;
+  healthCheck(): Promise<{ ok: boolean; error?: string }>;
+}
+
+export interface MCPToolCallAuditPayload {
+  mcpServer: string;
+  toolName: string;
+  permission: MCPToolPermission;
+  input: Record<string, unknown>;
+  result: unknown;
+  durationMs: number;
+  success: boolean;
+  error?: string;
+}
