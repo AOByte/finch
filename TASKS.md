@@ -14,7 +14,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 - [x] **W1-01** — Initialise pnpm monorepo. Create `apps/api`, `apps/web`, `packages/types`. Configure `pnpm-workspace.yaml`. Set `"node": ">=20"` in root `package.json` engines field. Add `.nvmrc` with `20`.
 
-- [ ] **W1-02** — Create `infra/docker-compose.yml` with the following services, all using `finch-` prefix, Postgres credentials `finch/finch/finch`:
+- [x] **W1-02** — Create `infra/docker-compose.yml` with the following services, all using `finch-` prefix, Postgres credentials `finch/finch/finch`:
   - `finch-postgres` — `pgvector/pgvector:pg16`, port 5432, named volume `finch_postgres_data`
   - `finch-redis` — `redis:7-alpine`, port 6379
   - `finch-temporal` — `temporalio/auto-setup:1.24`, port 7233, env `DB=postgresql`, `POSTGRES_USER=finch`, `POSTGRES_PWD=finch`, `POSTGRES_SEEDS=finch-postgres`, depends on `finch-postgres`
