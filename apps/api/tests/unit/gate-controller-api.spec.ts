@@ -39,7 +39,7 @@ describe('GateController', () => {
 
     expect(mockGateControllerService.resolve).toHaveBeenCalledWith('g1', 'the answer');
     expect(mockWorkflowClient.getHandle).toHaveBeenCalledWith('finch-r1');
-    expect(mockHandle.signal).toHaveBeenCalledWith('gateResolution', resolution);
+    expect(mockHandle.signal).toHaveBeenCalledWith('gate_resolved', resolution);
     expect(result).toEqual({ data: resolution });
   });
 

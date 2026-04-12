@@ -32,7 +32,7 @@ export class GateController {
       const run = await this.gateControllerService['runRepository'].findById(gate.runId);
       if (run?.temporalWorkflowId) {
         const handle = this.workflowClient.getHandle(run.temporalWorkflowId);
-        await handle.signal('gateResolution', resolution);
+        await handle.signal('gate_resolved', resolution);
       }
     }
 

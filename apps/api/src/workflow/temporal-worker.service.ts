@@ -130,9 +130,16 @@ export class TemporalWorkerService implements OnModuleInit {
 
       resumeAcquirePhase: async (
         context: ContextObject,
-        _resolution: GateResolution,
+        resolution: GateResolution,
       ): Promise<ContextObject> => {
-        return { ...context, hasGap: false };
+        return {
+          ...context,
+          hasGap: false,
+          gapDescription: undefined,
+          question: undefined,
+          gateId: undefined,
+          dependencies: [...context.dependencies, `[Gate Answer]: ${resolution.answer}`],
+        };
       },
 
       runPlanPhase: async (_context: ContextObject): Promise<PlanArtifact> => {
@@ -155,9 +162,16 @@ export class TemporalWorkerService implements OnModuleInit {
 
       resumePlanPhase: async (
         plan: PlanArtifact,
-        _resolution: GateResolution,
+        resolution: GateResolution,
       ): Promise<PlanArtifact> => {
-        return { ...plan, hasGap: false };
+        return {
+          ...plan,
+          hasGap: false,
+          gapDescription: undefined,
+          question: undefined,
+          gateId: undefined,
+          steps: [...plan.steps, `[Gate Answer]: ${resolution.answer}`],
+        };
       },
 
       runExecutePhase: async (
@@ -184,9 +198,16 @@ export class TemporalWorkerService implements OnModuleInit {
 
       resumeExecutePhase: async (
         report: VerificationReport,
-        _resolution: GateResolution,
+        resolution: GateResolution,
       ): Promise<VerificationReport> => {
-        return { ...report, hasGap: false };
+        return {
+          ...report,
+          hasGap: false,
+          gapDescription: undefined,
+          question: undefined,
+          gateId: undefined,
+          results: [...report.results, `[Gate Answer]: ${resolution.answer}`],
+        };
       },
 
       runShipPhase: async (

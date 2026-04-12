@@ -213,10 +213,14 @@ describe('TemporalWorkerService', () => {
       expect(mockGateController.dispatch).toHaveBeenCalledWith(gate);
     });
 
-    it('resumeAcquirePhase returns context with hasGap=false', async () => {
-      const context = { runId: 'r1', harnessId: 'h1', hasGap: true, files: [], dependencies: [] };
-      const result = await activities.resumeAcquirePhase(context, { gateId: 'g1', requiresPhase: 'ACQUIRE', answer: 'ans' });
+    it('resumeAcquirePhase returns context with hasGap=false and gate answer in dependencies', async () => {
+      const context = { runId: 'r1', harnessId: 'h1', hasGap: true, gapDescription: 'missing info', question: 'what?', gateId: 'g1', files: [], dependencies: ['dep1'] };
+      const result = await activities.resumeAcquirePhase(context, { gateId: 'g1', requiresPhase: 'ACQUIRE', answer: 'the answer' });
       expect(result.hasGap).toBe(false);
+      expect(result.gapDescription).toBeUndefined();
+      expect(result.question).toBeUndefined();
+      expect(result.gateId).toBeUndefined();
+      expect(result.dependencies).toEqual(['dep1', '[Gate Answer]: the answer']);
     });
 
     it('runPlanPhase calls planAgent.runPlan', async () => {
@@ -244,10 +248,14 @@ describe('TemporalWorkerService', () => {
       expect(mockGateController.dispatch).toHaveBeenCalled();
     });
 
-    it('resumePlanPhase returns plan with hasGap=false', async () => {
-      const plan = { runId: 'r1', hasGap: true, steps: [] };
-      const result = await activities.resumePlanPhase(plan, { gateId: 'g1', requiresPhase: 'PLAN', answer: 'ans' });
+    it('resumePlanPhase returns plan with hasGap=false and gate answer in steps', async () => {
+      const plan = { runId: 'r1', hasGap: true, gapDescription: 'missing', question: 'what?', gateId: 'g1', steps: ['step1'] };
+      const result = await activities.resumePlanPhase(plan, { gateId: 'g1', requiresPhase: 'PLAN', answer: 'plan answer' });
       expect(result.hasGap).toBe(false);
+      expect(result.gapDescription).toBeUndefined();
+      expect(result.question).toBeUndefined();
+      expect(result.gateId).toBeUndefined();
+      expect(result.steps).toEqual(['step1', '[Gate Answer]: plan answer']);
     });
 
     it('runExecutePhase calls executeAgent.runExecute', async () => {
@@ -277,10 +285,14 @@ describe('TemporalWorkerService', () => {
       expect(mockGateController.dispatch).toHaveBeenCalled();
     });
 
-    it('resumeExecutePhase returns report with hasGap=false', async () => {
-      const report = { runId: 'r1', hasGap: true, allPassing: false, results: [] };
-      const result = await activities.resumeExecutePhase(report, { gateId: 'g1', requiresPhase: 'EXECUTE', answer: 'ans' });
+    it('resumeExecutePhase returns report with hasGap=false and gate answer in results', async () => {
+      const report = { runId: 'r1', hasGap: true, gapDescription: 'gap', question: 'q?', gateId: 'g1', allPassing: false, results: ['result1'] };
+      const result = await activities.resumeExecutePhase(report, { gateId: 'g1', requiresPhase: 'EXECUTE', answer: 'exec answer' });
       expect(result.hasGap).toBe(false);
+      expect(result.gapDescription).toBeUndefined();
+      expect(result.question).toBeUndefined();
+      expect(result.gateId).toBeUndefined();
+      expect(result.results).toEqual(['result1', '[Gate Answer]: exec answer']);
     });
 
     it('runShipPhase calls shipAgent.runShip', async () => {
