@@ -10,10 +10,6 @@ export class TemporalWorkerService implements OnModuleInit {
 
   constructor(private readonly runRepository: RunRepository) {}
 
-  getWorkflowsPath(): string {
-    return path.join(__dirname, './finch.workflow');
-  }
-
   async onModuleInit(): Promise<void> {
     const address =
       process.env.TEMPORAL_ADDRESS ?? 'localhost:7233';
@@ -26,9 +22,11 @@ export class TemporalWorkerService implements OnModuleInit {
       },
     });
 
+    const workflowsPath = path.resolve(__dirname, 'finch.workflow');
+
     const worker = await Worker.create({
       connection,
-      workflowsPath: this.getWorkflowsPath(),
+      workflowsPath,
       activities,
       taskQueue: 'finch',
     });
