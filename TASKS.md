@@ -85,9 +85,9 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
 
 **Goal:** all repositories implemented and tested against the live database. `finchWorkflow` runs end-to-end through all five phases with stub activities and reaches COMPLETED in the Temporal UI.
 
-- [ ] **W2-01** — Implement `PrismaService` in `PersistenceModule`. Injectable NestJS service. Initialises the Prisma client in `onModuleInit`, disconnects in `onModuleDestroy`.
+- [x] **W2-01** — Implement `PrismaService` in `PersistenceModule`. Injectable NestJS service. Initialises the Prisma client in `onModuleInit`, disconnects in `onModuleDestroy`.
 
-- [ ] **W2-02** — Implement `RunRepository` with methods:
+- [x] **W2-02** — Implement `RunRepository` with methods:
   - `create(data)` — creates a Run record
   - `findById(runId)` — returns Run or null
   - `findByHarnessId(harnessId, options?)` — paginated list
@@ -99,7 +99,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   - `markCompleted(runId)` — sets status COMPLETED and `completed_at`
   No `any` types.
 
-- [ ] **W2-03** — Implement `GateRepository` with methods:
+- [x] **W2-03** — Implement `GateRepository` with methods:
   - `create(gateEvent)` — persists gate event with typed snapshot
   - `findById(gateId)` — returns GateEvent or null
   - `findByRunId(runId)` — returns all gates for a run
@@ -107,36 +107,36 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   - `saveResolution(gateId, resolution)` — persists the resolution and sets `resolved_at`
   - `markResolved(gateId)` — sets `resolved_at` to now
 
-- [ ] **W2-04** — Implement `ArtifactRepository` with methods:
+- [x] **W2-04** — Implement `ArtifactRepository` with methods:
   - `save({ runId, phase, artifactType, content, version })` — stores artifact as JSONB
   - `findByRunIdAndPhase(runId, phase)` — returns latest artifact for that phase
 
-- [ ] **W2-05** — Implement `HarnessRepository` with methods:
+- [x] **W2-05** — Implement `HarnessRepository` with methods:
   - `create(data)` — creates a Harness record
   - `findById(harnessId)` — returns Harness or null
   - `findAll()` — returns all harnesses
   - `update(harnessId, data)` — partial update
 
-- [ ] **W2-06** — Write `apps/api/prisma/seed.ts`. Creates:
+- [x] **W2-06** — Write `apps/api/prisma/seed.ts`. Creates:
   1. A default user: `email: admin@finch.local`, `password_hash`: bcrypt hash of `finch-dev-password`
   2. A default Harness record: `name: "default"`
   3. The default user added to the default harness via `harness_members`
   4. One default `AgentConfig` record per phase (TRIGGER, ACQUIRE, PLAN, EXECUTE, SHIP) for the default harness, `position: 0`, `model: "claude-sonnet-4-5"`, empty `system_prompt_body`
   Run: `pnpm --filter api prisma db seed`. Verify: all records appear in the database.
 
-- [ ] **W2-07** — Write Vitest integration tests for all four repositories in `apps/api/tests/integration/`. Tests must run against the real Postgres container — no mocks. Each test: creates a record, reads it back, updates it, verifies the update. Include a test for `getPersistedPipelineArtifact` that writes via `updatePipelinePosition` then reads back with the correct `(runId, phase, position)` signature to confirm it returns the right artifact. Verify: `pnpm --filter api test:integration` passes.
+- [x] **W2-07** — Write Vitest integration tests for all four repositories in `apps/api/tests/integration/`. Tests must run against the real Postgres container — no mocks. Each test: creates a record, reads it back, updates it, verifies the update. Include a test for `getPersistedPipelineArtifact` that writes via `updatePipelinePosition` then reads back with the correct `(runId, phase, position)` signature to confirm it returns the right artifact. Verify: `pnpm --filter api test:integration` passes.
 
-- [ ] **W2-08** — Implement `TemporalWorkerService` in `WorkflowModule`. Connects to Temporal at `TEMPORAL_ADDRESS`. Registers stub activities (see W2-11). **`worker.run()` must not be awaited inside `onModuleInit`** — use a detached promise with a crash handler: `worker.run().catch(err => { logger.error(err); process.exit(1); })`. See `skills/nestjs-patterns.md` section "Temporal worker lifetime inside NestJS".
+- [x] **W2-08** — Implement `TemporalWorkerService` in `WorkflowModule`. Connects to Temporal at `TEMPORAL_ADDRESS`. Registers stub activities (see W2-11). **`worker.run()` must not be awaited inside `onModuleInit`** — use a detached promise with a crash handler: `worker.run().catch(err => { logger.error(err); process.exit(1); })`. See `skills/nestjs-patterns.md` section "Temporal worker lifetime inside NestJS".
 
-- [ ] **W2-09** — Add a `WorkflowClient` custom provider to `WorkflowModule` and export it:
+- [x] **W2-09** — Add a `WorkflowClient` custom provider to `WorkflowModule` and export it:
   ```typescript
   { provide: WorkflowClient, useFactory: () => new WorkflowClient({ address: process.env.TEMPORAL_ADDRESS }) }
   ```
   `GateControllerService` and other services inject it via constructor injection. They must not call `new WorkflowClient()` directly. See `skills/nestjs-patterns.md` section "Injecting the Temporal WorkflowClient".
 
-- [ ] **W2-10** — Implement `finchWorkflow` in `apps/api/src/workflow/finch.workflow.ts`. Must implement: all five phases in sequence, gate signal handling (`gateResolvedSignal`, `stopRunSignal` registered before the first `await`), backward traversal routing in PLAN and EXECUTE gate loops, multi-repo Ship fan-out with `Promise.all` over parallel `runShipPhase` activities. The workflow must be deterministic — no `Date.now()`, no `Math.random()`, no I/O, no service calls. Additionally: the workflow must call `logTraversalEvent` on every backward traversal — this activity is idempotent via `gateId` deduplication and must be called as a non-retryable activity. See `skills/temporal-patterns.md` sections "The fundamental rule", "Signals", "Parallel activities with Promise.all", and "Audit activities from inside the workflow".
+- [x] **W2-10** — Implement `finchWorkflow` in `apps/api/src/workflow/finch.workflow.ts`. Must implement: all five phases in sequence, gate signal handling (`gateResolvedSignal`, `stopRunSignal` registered before the first `await`), backward traversal routing in PLAN and EXECUTE gate loops, multi-repo Ship fan-out with `Promise.all` over parallel `runShipPhase` activities. The workflow must be deterministic — no `Date.now()`, no `Math.random()`, no I/O, no service calls. Additionally: the workflow must call `logTraversalEvent` on every backward traversal — this activity is idempotent via `gateId` deduplication and must be called as a non-retryable activity. See `skills/temporal-patterns.md` sections "The fundamental rule", "Signals", "Parallel activities with Promise.all", and "Audit activities from inside the workflow".
 
-- [ ] **W2-11** — Implement stub activities for all entries in the `FinchActivities` interface. Each stub must return a minimal valid typed artifact. Full list:
+- [x] **W2-11** — Implement stub activities for all entries in the `FinchActivities` interface. Each stub must return a minimal valid typed artifact. Full list:
   - `runTriggerPhase` — returns minimal `TaskDescriptor`
   - `runAcquirePhase` — returns minimal `ContextObject` with `hasGap: false`
   - `resumeAcquirePhase` — returns minimal `ContextObject` with `hasGap: false`
@@ -152,9 +152,9 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   - `logTraversalEvent` — no-op stub (idempotent implementation comes in W3-14)
   All stubs must be registered in `TemporalWorkerService`.
 
-- [ ] **W2-12** — Implement `GET /api/runs/:runId` in `RunsController`. Returns the Run record from Postgres.
+- [x] **W2-12** — Implement `GET /api/runs/:runId` in `RunsController`. Returns the Run record from Postgres.
 
-- [ ] **W2-13** — End-to-end verification. Using the Temporal client directly (or a temporary test script): start `finchWorkflow` with a stub `RawTriggerInput`. Verify it appears in Temporal UI at `http://localhost:8080`, traverses all five phases via stub activities, and shows status COMPLETED. Verify `GET /api/runs/:runId` returns status COMPLETED from Postgres.
+- [x] **W2-13** — End-to-end verification. Using the Temporal client directly (or a temporary test script): start `finchWorkflow` with a stub `RawTriggerInput`. Verify it appears in Temporal UI at `http://localhost:8080`, traverses all five phases via stub activities, and shows status COMPLETED. Verify `GET /api/runs/:runId` returns status COMPLETED from Postgres.
 
 **Wave 2 complete when:** `finchWorkflow` starts, traverses all five phases with stub activities, and reaches COMPLETED in both Temporal UI and Postgres.
 

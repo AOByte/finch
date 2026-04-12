@@ -1,11 +1,22 @@
 import { Module } from '@nestjs/common';
-import { AgentModule } from '../agents/agent.module';
-import { MemoryModule } from '../memory/memory.module';
-import { OrchestratorModule } from '../orchestrator/orchestrator.module';
+import { WorkflowClient, Connection } from '@temporalio/client';
+import { PersistenceModule } from '../persistence/persistence.module';
+import { TemporalWorkerService } from './temporal-worker.service';
 
 @Module({
-  imports: [AgentModule, MemoryModule, OrchestratorModule],
-  providers: [],
-  exports: [],
+  imports: [PersistenceModule],
+  providers: [
+    TemporalWorkerService,
+    {
+      provide: WorkflowClient,
+      useFactory: async () => {
+        const address =
+          process.env.TEMPORAL_ADDRESS ?? 'localhost:7233';
+        const connection = await Connection.connect({ address });
+        return new WorkflowClient({ connection });
+      },
+    },
+  ],
+  exports: [WorkflowClient, TemporalWorkerService],
 })
 export class WorkflowModule {}

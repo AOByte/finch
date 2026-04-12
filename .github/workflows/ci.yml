@@ -27,6 +27,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api prisma generate
       - run: pnpm --filter api exec tsc --noEmit
 
   typecheck-web:
@@ -53,6 +54,7 @@ jobs:
           node-version: 20
           cache: pnpm
       - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter api prisma generate
       - run: pnpm --filter api test run
       - run: pnpm --filter web test run
 
