@@ -6,6 +6,32 @@ import { TemporalWorkerService } from '../../src/workflow/temporal-worker.servic
 import { WorkflowClient } from '@temporalio/client';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
+// Mock ioredis to prevent BullMQ from connecting to Redis
+vi.mock('ioredis', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { EventEmitter } = require('events');
+  class MockRedis extends EventEmitter {
+    status = 'ready';
+    connect() { return Promise.resolve(); }
+    disconnect() { return Promise.resolve(); }
+    quit() { return Promise.resolve('OK'); }
+    subscribe() { return Promise.resolve(); }
+    duplicate() { return new MockRedis(); }
+    defineCommand() { /* no-op */ }
+    options = {};
+  }
+  return { default: MockRedis, Redis: MockRedis };
+});
+
+// Mock redis to prevent REDIS_PUBLISHER factory from connecting
+vi.mock('redis', () => ({
+  createClient: vi.fn().mockReturnValue({
+    connect: vi.fn().mockResolvedValue(undefined),
+    publish: vi.fn().mockResolvedValue(undefined),
+    disconnect: vi.fn().mockResolvedValue(undefined),
+    on: vi.fn(),
+  }),
+}));
 
 const mockPrisma = {
   $connect: vi.fn(),
