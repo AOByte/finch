@@ -1,0 +1,67 @@
+[
+  {
+    "providerId": "figma",
+    "displayName": "Figma",
+    "authorizationUrl": "https://www.figma.com/oauth",
+    "tokenUrl": "https://www.figma.com/api/oauth/token",
+    "revocationUrl": null,
+    "scopes": ["file_read"],
+    "clientIdEnvVar": "FIGMA_OAUTH_CLIENT_ID",
+    "clientSecretEnvVar": "FIGMA_OAUTH_CLIENT_SECRET",
+    "supportsPKCE": true,
+    "tokenPassingStrategy": "env",
+    "tokenEnvVar": "FIGMA_ACCESS_TOKEN"
+  },
+  {
+    "providerId": "github",
+    "displayName": "GitHub",
+    "authorizationUrl": "https://github.com/login/oauth/authorize",
+    "tokenUrl": "https://github.com/login/oauth/access_token",
+    "revocationUrl": null,
+    "scopes": ["repo", "read:org"],
+    "clientIdEnvVar": "GITHUB_OAUTH_CLIENT_ID",
+    "clientSecretEnvVar": "GITHUB_OAUTH_CLIENT_SECRET",
+    "supportsPKCE": false,
+    "tokenPassingStrategy": "header",
+    "tokenEnvVar": "GITHUB_TOKEN"
+  },
+  {
+    "providerId": "jira",
+    "displayName": "Jira / Atlassian",
+    "authorizationUrl": "https://auth.atlassian.com/authorize",
+    "tokenUrl": "https://auth.atlassian.com/oauth/token",
+    "revocationUrl": null,
+    "scopes": ["read:jira-work", "write:jira-work"],
+    "clientIdEnvVar": "JIRA_OAUTH_CLIENT_ID",
+    "clientSecretEnvVar": "JIRA_OAUTH_CLIENT_SECRET",
+    "supportsPKCE": true,
+    "tokenPassingStrategy": "header",
+    "tokenEnvVar": "JIRA_ACCESS_TOKEN"
+  },
+  {
+    "providerId": "slack",
+    "displayName": "Slack",
+    "authorizationUrl": "https://slack.com/oauth/v2/authorize",
+    "tokenUrl": "https://slack.com/api/oauth.v2.access",
+    "revocationUrl": "https://slack.com/api/auth.revoke",
+    "scopes": ["chat:write", "channels:read"],
+    "clientIdEnvVar": "SLACK_OAUTH_CLIENT_ID",
+    "clientSecretEnvVar": "SLACK_OAUTH_CLIENT_SECRET",
+    "supportsPKCE": false,
+    "tokenPassingStrategy": "header",
+    "tokenEnvVar": "SLACK_BOT_TOKEN"
+  },
+  {
+    "providerId": "linear",
+    "displayName": "Linear",
+    "authorizationUrl": "https://linear.app/oauth/authorize",
+    "tokenUrl": "https://api.linear.app/oauth/token",
+    "revocationUrl": "https://api.linear.app/oauth/revoke",
+    "scopes": ["read", "write"],
+    "clientIdEnvVar": "LINEAR_OAUTH_CLIENT_ID",
+    "clientSecretEnvVar": "LINEAR_OAUTH_CLIENT_SECRET",
+    "supportsPKCE": true,
+    "tokenPassingStrategy": "header",
+    "tokenEnvVar": "LINEAR_API_KEY"
+  }
+]

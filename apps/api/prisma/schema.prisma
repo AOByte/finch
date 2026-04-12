@@ -143,20 +143,47 @@ model Connector {
 }
 
 model McpServer {
-  mcpServerId     String    @id @default(dbgenerated("gen_random_uuid()")) @map("mcp_server_id") @db.Uuid
-  harnessId       String    @map("harness_id") @db.Uuid
-  serverType      String    @map("server_type")
-  displayName     String    @map("display_name")
-  configEncrypted String    @map("config_encrypted")
-  isActive        Boolean   @default(true) @map("is_active")
-  healthStatus    String    @default("unknown") @map("health_status")
-  lastHealthCheck DateTime? @map("last_health_check") @db.Timestamptz()
-  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
-  updatedAt       DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
-  harness         Harness   @relation(fields: [harnessId], references: [harnessId])
+  mcpServerId           String    @id @default(dbgenerated("gen_random_uuid()")) @map("mcp_server_id") @db.Uuid
+  harnessId             String    @map("harness_id") @db.Uuid
+  serverType            String    @map("server_type")
+  displayName           String    @map("display_name")
+  configEncrypted       String    @map("config_encrypted")
+  isActive              Boolean   @default(true) @map("is_active")
+  healthStatus          String    @default("unknown") @map("health_status")
+  lastHealthCheck       DateTime? @map("last_health_check") @db.Timestamptz()
+  // External MCP transport fields (nullable — only set for external servers)
+  transport             String?   @map("transport")
+  command               String?   @map("command")
+  commandArgs           String[]  @default([]) @map("command_args")
+  endpointUrl           String?   @map("endpoint_url")
+  envEncrypted          String?   @map("env_encrypted")
+  permissionOverrides   Json?     @map("permission_overrides")
+  // OAuth fields (nullable — only set for OAuth-based external servers)
+  oauthProviderId       String?   @map("oauth_provider_id")
+  accessTokenEncrypted  String?   @map("access_token_encrypted")
+  refreshTokenEncrypted String?   @map("refresh_token_encrypted")
+  tokenExpiresAt        DateTime? @map("token_expires_at") @db.Timestamptz()
+  createdAt             DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt             DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz()
+  harness               Harness   @relation(fields: [harnessId], references: [harnessId])
 
   @@index([harnessId, isActive], map: "mcp_servers_harness")
   @@map("mcp_servers")
+}
+
+// --- OAuth tables ---
+
+model OAuthState {
+  id           String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  state        String   @unique
+  harnessId    String   @map("harness_id") @db.Uuid
+  providerId   String   @map("provider_id")
+  codeVerifier String?  @map("code_verifier")
+  expiresAt    DateTime @map("expires_at") @db.Timestamptz()
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([expiresAt], map: "oauth_states_expires")
+  @@map("oauth_states")
 }
 
 model AgentConfig {

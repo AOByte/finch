@@ -342,7 +342,35 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   3. Verify the second run's `memory_read` audit event has a non-empty `hits` payload with at least one hit with `relevanceScore >= 0.7` from the first run's data
   4. Verify memory staging records from run 1 are absent after merge (cleared by `clearStaging`)
 
-**Wave 5 complete when:** multi-repo runs create PRs in each registered repository, and memory hits from prior runs appear in subsequent Acquire phases with `relevanceScore >= 0.7`.
+**Wave 5B complete when:** multi-repo runs create PRs in each registered repository, and memory hits from prior runs appear in subsequent Acquire phases with `relevanceScore >= 0.7`.
+
+---
+
+## Wave 5C — Plug-and-Play MCP Architecture
+
+**Goal:** external MCP servers (Figma, Linear, Notion, etc.) can be registered without code changes. OAuth flow handles authorization; ExternalMCPAdapter bridges stdio/SSE transports to the MCPServer interface. Process lifecycle manager handles crash recovery.
+
+- [x] **W5C-01** — Implement MCP Transport Layer: `MCPTransport` interface, `StdioTransport` (child process, JSON-RPC 2.0 over stdin/stdout), `SSETransport` (HTTP POST + Server-Sent Events, Bearer token auth). Both support `initialize()`, `sendRequest()`, `close()`, `isConnected()`, `updateCredentials()`.
+
+- [x] **W5C-02** — Implement `ExternalMCPAdapter` (implements `MCPServer`). Bridges external servers to in-process registry. Supports permission overrides (default 'read', user can override to 'write'). Handles token refresh on 401/403 via `tokenRefresher` callback. Caches tools from external server.
+
+- [x] **W5C-03** — Update `MCPServerFactory` with two-tier resolution: Tier 1 (internal: jira, github, slack) fast path, Tier 2 (external) creates `ExternalMCPAdapter` with transport config. Builds env from `envEncrypted`, injects OAuth tokens.
+
+- [x] **W5C-04** — Implement OAuth Module: `OAuthService` (token exchange, storage, refresh, revocation), `OAuthController` (authorize endpoint only), `OAuthProviderRegistry` (loads `providers.json`, supports figma, github, jira, slack, linear). OAuthModule imports only PersistenceModule (LEAF — no circular dependency).
+
+- [x] **W5C-04b** — Implement `OAuthCallbackController` in `ConnectorSettingsModule`. Callback endpoint: `GET /api/connectors/oauth/callback`. Calls `OAuthService.handleCallback()` → returns mcpServerId → calls `ConnectorSettingsService.loadAndRegisterServer()`.
+
+- [x] **W5C-05** — DB Schema migration: add `oauth_states` table, update `mcp_servers` with OAuth and transport fields. Existing rows unaffected (all new columns nullable).
+
+- [x] **W5C-06** — Update `ConnectorSettingsService`: add `loadAndRegisterServer(mcpServerId)` method. Boot-time loading via `onModuleInit()` — iterates active `mcp_servers`, registers each. Connection failures logged but don't crash.
+
+- [x] **W5C-07** — Implement `ProcessManager` for stdio process lifecycle: crash recovery with exponential backoff (1s, 2s, 4s, 8s, max 30s), graceful shutdown, credential rotation on OAuth token refresh.
+
+- [x] **W5C-08** — Unit tests for all new components: StdioTransport, SSETransport, ExternalMCPAdapter, OAuthService, OAuthProviderRegistry, OAuthController, OAuthCallbackController, ConnectorSettingsService boot-time loading, ProcessManager, MCPServerFactory external server creation.
+
+- [x] **W5C-09** — Update documentation: AGENTS.md (Wave 5C row), TASKS.md (this section).
+
+**Wave 5C complete when:** external MCP servers can be registered via OAuth or API-token config, ExternalMCPAdapter bridges them to the MCPServer interface, all unit tests pass, no circular dependencies, OAuthCallbackController lives in ConnectorSettingsModule.
 
 ---
 
