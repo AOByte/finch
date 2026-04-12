@@ -47,7 +47,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   - `memory_staging` — `staging_id`, `run_id FK`, `harness_id FK`, `type memory_type`, `content TEXT`, `embedding VECTOR(1536)`, `relevance_tags TEXT[]`, `content_hash TEXT`, `created_at`
   - `memory_type` enum — `TaskPattern`, `FileConvention`, `TeamConvention`, `GatePattern`, `RiskSignal`, `RepoMap`
 
-- [ ] **W1-07** — Run `pnpm --filter api prisma migrate dev --name init` against the running `finch-postgres` container. The migration must:
+- [x] **W1-07** — Run `pnpm --filter api prisma migrate dev --name init` against the running `finch-postgres` container. The migration must:
   1. Begin with `CREATE EXTENSION IF NOT EXISTS vector;` before any table definitions — this is required for `VECTOR` columns and will fail silently if omitted
   2. Create all tables from W1-06
   3. Add `CREATE RULE no_audit_update AS ON UPDATE TO audit_events DO INSTEAD NOTHING;` and `CREATE RULE no_audit_delete AS ON DELETE TO audit_events DO INSTEAD NOTHING;` as raw SQL after creating `audit_events`
