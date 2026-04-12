@@ -499,7 +499,12 @@ export class TemporalWorkerService implements OnModuleInit {
       maxConcurrentActivities: 20,
     });
 
-    await worker.run();
+    // Detached — does not block NestJS bootstrap.
+    // See skills/temporal-patterns.md for details.
+    worker.run().catch(err => {
+      this.logger.error({ err }, 'Temporal worker crashed');
+      process.exit(1);
+    });
   }
 }
 ```
@@ -525,8 +530,9 @@ const rawInput: RawTriggerInput = {
   runId: uuidv4(),
 };
 
-const client = new WorkflowClient();
-const handle = await client.start(finchWorkflow, {
+// Inject WorkflowClient via DI — do not instantiate directly.
+// See skills/nestjs-patterns.md for the correct provider pattern.
+const handle = await this.workflowClient.start(finchWorkflow, {
   args: [rawInput],
   taskQueue: 'finch',
   workflowId: `finch-${rawInput.runId}`,
@@ -1039,6 +1045,7 @@ export class RuleEnforcementService {
 
     // Semantic evaluation — Haiku-class model for rules that cannot be
     // evaluated by pattern matching (e.g. "Do not open PRs larger than 400 lines")
+    // AR-07 HARD: currentArtifact MUST be included alongside the description string.
     if (rule.patternType === 'semantic') {
       const llm = this.llmRegistry.get('anthropic');
       const response = await llm.complete({
@@ -1050,7 +1057,8 @@ export class RuleEnforcementService {
           content: `
 Rule: ${rule.constraint}
 Planned action: ${params.description}
-Context: ${JSON.stringify(params.planArtifact?.estimatedScope ?? {})}
+Current artifact: ${JSON.stringify(params.currentArtifact ?? {})}
+Plan scope: ${JSON.stringify(params.planArtifact?.estimatedScope ?? {})}
 
 Does this planned action violate the rule?
           `.trim(),
@@ -2171,7 +2179,10 @@ export class SlackConnectorService implements TriggerConnector, OnModuleInit {
           threadTs: event.thread_ts,
         });
         if (openGate) {
-          await this.gateController.resolve(openGate.gateId, event.text);
+          // Apply the same validation as the API endpoint (RespondToGateDto)
+          const answer = (event.text ?? '').slice(0, 10000).trim();
+          if (!answer) return;
+          await this.gateController.resolve(openGate.gateId, answer);
           return;
         }
       }
@@ -2249,11 +2260,54 @@ async runCommand(params: {
   return result;
 }
 
+private readonly ALLOWED_COMMANDS = new Set([
+  'npm', 'npx', 'pnpm', 'yarn', 'node',
+  'tsc', 'eslint', 'prettier', 'vitest', 'jest', 'playwright',
+  'cargo', 'rustc', 'go', 'python', 'pytest', 'ruff',
+  'make', 'cmake', 'gradle', 'mvn',
+  'git', 'cat', 'ls', 'find', 'grep', 'diff', 'wc',
+]);
+
+private readonly SHELL_METACHAR_PATTERN = /[;&|`$(){}!<>\\]/;
+
+private validateCommand(command: string): void {
+  // Extract the base command (first token)
+  const baseCommand = command.trim().split(/\s+/)[0];
+
+  if (!this.ALLOWED_COMMANDS.has(baseCommand)) {
+    throw new Error(
+      `Command "${baseCommand}" is not in the allowed command list. ` +
+      `Allowed: ${[...this.ALLOWED_COMMANDS].join(', ')}`,
+    );
+  }
+
+  // Reject shell metacharacters that enable command chaining/injection
+  if (this.SHELL_METACHAR_PATTERN.test(command)) {
+    throw new Error(
+      'Command contains shell metacharacters (;, &, |, `, $, etc.) which are not permitted. ' +
+      'Use separate verification conditions for each command.',
+    );
+  }
+}
+
 private executeCommand(params: RunCommandParams): Promise<CommandResult> {
+  // Validate command against allowlist and reject shell metacharacters
+  this.validateCommand(params.command);
+
   return new Promise((resolve) => {
-    const proc = spawn('bash', ['-c', params.command], {
+    const args = params.command.trim().split(/\s+/);
+    const bin = args.shift()!;
+
+    // Use execFile (no shell) instead of spawn('bash', ['-c', ...])
+    // to prevent shell injection entirely
+    const proc = spawn(bin, args, {
       cwd: params.workspace.path,
       timeout: params.timeout,
+      env: {
+        PATH: process.env.PATH,
+        HOME: params.workspace.path,
+        NODE_ENV: 'test',
+      },
     });
 
     let stdout = '';
@@ -2569,7 +2623,7 @@ CREATE INDEX gate_events_open_thread
 CREATE TABLE audit_events (
   event_id    UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   run_id      UUID,
-  harness_id  UUID,
+  harness_id  UUID NOT NULL REFERENCES harnesses(harness_id),
   phase       TEXT,
   event_type  TEXT NOT NULL,
   actor       JSONB NOT NULL,
@@ -2772,21 +2826,90 @@ GET    /api/analytics/:harnessId
 POST   /api/trigger/:harnessId     (webhook trigger, HMAC auth)
 ```
 
-### 16.2 Gate Response Endpoint
+### 16.2 Webhook Trigger Endpoint
+
+The webhook trigger endpoint validates HMAC-SHA256 signatures (PRD TR-03) and applies
+rate limiting to prevent abuse. Each harness has a `webhookSecret` stored encrypted via
+`CredentialEncryptionService`.
+
+```typescript
+@Controller('trigger')
+export class TriggerController {
+  constructor(
+    private readonly orchestratorService: OrchestratorService,
+    private readonly harnessRepository: HarnessRepository,
+    private readonly credentialEncryption: CredentialEncryptionService,
+  ) {}
+
+  @Post(':harnessId')
+  @Throttle({ default: { limit: 5, ttl: 60000 } })
+  async trigger(
+    @Param('harnessId') harnessId: string,
+    @Headers('x-finch-signature') signature: string,
+    @Body() body: WebhookTriggerDto,
+    @Req() req: Request,
+  ) {
+    if (!signature) throw new UnauthorizedException('Missing x-finch-signature header');
+
+    const harness = await this.harnessRepository.findById(harnessId);
+    if (!harness) throw new NotFoundException(`Harness ${harnessId} not found`);
+
+    // Decrypt the stored webhook secret and validate HMAC-SHA256
+    const webhookSecret = this.credentialEncryption.decrypt(harness.encryptedWebhookSecret);
+    const rawBody = (req as any).rawBody as Buffer;
+    const expected = crypto
+      .createHmac('sha256', webhookSecret)
+      .update(rawBody)
+      .digest('hex');
+
+    if (!crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+      throw new UnauthorizedException('Invalid HMAC signature');
+    }
+
+    await this.orchestratorService.startRun(harnessId, body);
+    return { data: { triggered: true } };
+  }
+}
+```
+
+### 16.3 Gate Response Endpoint
 
 ```typescript
 @Controller('gate')
 export class GatesController {
-  constructor(private readonly gateController: GateControllerService) {}
+  constructor(
+    private readonly gateController: GateControllerService,
+    private readonly gateRepository: GateRepository,
+  ) {}
 
   @Post(':gateId/respond')
-  @UseGuards(HarnessAuthGuard)
+  @UseGuards(GateHarnessAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   async respond(
     @Param('gateId') gateId: string,
     @Body() dto: RespondToGateDto,
   ) {
     await this.gateController.resolve(gateId, dto.answer);
     return { data: { resolved: true } };
+  }
+}
+
+// Gate-specific auth guard that resolves harnessId from the gate record
+// before checking user access. Standard HarnessAuthGuard cannot be used
+// because gateId is the route param, not harnessId.
+@Injectable()
+class GateHarnessAuthGuard implements CanActivate {
+  constructor(private readonly gateRepository: GateRepository) {}
+
+  async canActivate(context: ExecutionContext): Promise<boolean> {
+    const request = context.switchToHttp().getRequest();
+    const user = request.user;
+    const gateId = request.params.gateId;
+
+    const gate = await this.gateRepository.findById(gateId);
+    if (!gate) throw new NotFoundException(`Gate ${gateId} not found`);
+    if (!user.harnessAccess.includes(gate.harnessId)) throw new ForbiddenException();
+    return true;
   }
 }
 
@@ -2850,7 +2973,16 @@ Critical event types that require synchronous PostgreSQL writes before any downs
 ### 17.2 RunGateway
 
 ```typescript
-@WebSocketGateway({ namespace: '/runs', cors: { origin: process.env.FRONTEND_URL } })
+// SECURITY: Use ConfigService instead of process.env directly.
+// If FRONTEND_URL is unset, reject all origins by default.
+@WebSocketGateway({
+  namespace: '/runs',
+  cors: { origin: (origin, callback) => {
+    const allowed = configService.get<string>('FRONTEND_URL');
+    if (!allowed) return callback(new Error('CORS origin not configured'));
+    callback(null, origin === allowed);
+  }},
+})
 export class RunGateway implements OnModuleInit {
   @WebSocketServer() server: Server;
 
@@ -2873,7 +3005,11 @@ export class RunGateway implements OnModuleInit {
       client.data.userId,
       harnessId,
     );
-    if (!authorized) return { error: 'Unauthorized' };
+    if (!authorized) {
+      client.emit('error', { message: 'Unauthorized for this harness' });
+      client.disconnect();
+      return;
+    }
     client.join(`harness:${harnessId}`);
     return { joined: true };
   }
@@ -3156,19 +3292,21 @@ services:
   finch-api:
     build: { context: ., dockerfile: apps/api/Dockerfile }
     environment:
-      DATABASE_URL: postgresql://finch:finch@finch-postgres:5432/finch
-      REDIS_URL: redis://finch-redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@finch-postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@finch-redis:6379
       TEMPORAL_ADDRESS: finch-temporal:7233
     depends_on: [finch-postgres, finch-redis, finch-temporal]
     ports: ['3001:3001']
+    env_file: .env
 
   finch-worker:
     build: { context: ., dockerfile: apps/worker/Dockerfile }
     environment:
-      DATABASE_URL: postgresql://finch:finch@finch-postgres:5432/finch
-      REDIS_URL: redis://finch-redis:6379
+      DATABASE_URL: postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@finch-postgres:5432/${POSTGRES_DB}
+      REDIS_URL: redis://:${REDIS_PASSWORD}@finch-redis:6379
       TEMPORAL_ADDRESS: finch-temporal:7233
     depends_on: [finch-postgres, finch-redis, finch-temporal]
+    env_file: .env
 
   finch-web:
     build: { context: ., dockerfile: apps/web/Dockerfile }
@@ -3177,14 +3315,17 @@ services:
   finch-postgres:
     image: pgvector/pgvector:pg16
     environment:
-      POSTGRES_USER: finch
-      POSTGRES_PASSWORD: finch
-      POSTGRES_DB: finch
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
     volumes: ['finch_postgres_data:/var/lib/postgresql/data']
+    # SECURITY: Do not expose DB port in production. Only for local dev.
     ports: ['5432:5432']
 
   finch-redis:
     image: redis:7-alpine
+    command: redis-server --requirepass ${REDIS_PASSWORD}
+    # SECURITY: Do not expose Redis port in production. Only for local dev.
     ports: ['6379:6379']
 
   finch-temporal:
@@ -3192,8 +3333,8 @@ services:
     environment:
       DB: postgresql
       DB_PORT: 5432
-      POSTGRES_USER: finch
-      POSTGRES_PWD: finch
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
       POSTGRES_SEEDS: finch-postgres
     depends_on: [finch-postgres]
     ports: ['7233:7233']
@@ -3206,6 +3347,13 @@ services:
 
 volumes:
   finch_postgres_data:
+
+# SECURITY NOTE: Create a .env file at the project root with strong credentials:
+#   POSTGRES_USER=finch
+#   POSTGRES_PASSWORD=<openssl rand -hex 32>
+#   POSTGRES_DB=finch
+#   REDIS_PASSWORD=<openssl rand -hex 32>
+# Never commit .env files. Ensure .env is in .gitignore.
 ```
 
 ### 20.2 Kubernetes Production

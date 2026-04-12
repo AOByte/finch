@@ -230,8 +230,8 @@ pnpm --filter web dev
 
 **`apps/api/.env`**
 ```
-DATABASE_URL=postgresql://finch:finch@localhost:5432/finch
-REDIS_URL=redis://localhost:6379
+DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@localhost:5432/${POSTGRES_DB}
+REDIS_URL=redis://:${REDIS_PASSWORD}@localhost:6379
 TEMPORAL_ADDRESS=localhost:7233
 ANTHROPIC_API_KEY=<Devin secrets vault>
 OPENAI_API_KEY=<Devin secrets vault>
@@ -242,6 +242,8 @@ LOG_LEVEL=info
 FRONTEND_URL=http://localhost:3000
 TRIGGER_PREFIX=@finch
 ```
+
+> **Security:** Generate strong credentials for all environments. Never use default or trivial passwords. Ensure `.env` is listed in `.gitignore` and never committed to version control.
 
 ---
 
