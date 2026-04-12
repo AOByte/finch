@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
 import { PrismaService } from '../../src/persistence/prisma.service';
@@ -12,6 +12,10 @@ const mockPrisma = {
   $disconnect: vi.fn(),
   run: { findUnique: vi.fn() },
 };
+
+beforeAll(() => {
+  process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+});
 
 describe('AppModule', () => {
   const origEnv = process.env.NODE_ENV;

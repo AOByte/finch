@@ -1,4 +1,4 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { PersistenceModule } from '../../src/persistence/persistence.module';
 import { LLMModule } from '../../src/llm/llm.module';
@@ -19,6 +19,11 @@ const mockPrisma = {
   $connect: vi.fn(),
   $disconnect: vi.fn(),
 };
+
+// Set ENCRYPTION_KEY for CredentialEncryptionService in all module tests
+beforeAll(() => {
+  process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+});
 
 describe('Module stubs', () => {
   it('PersistenceModule should compile and export PrismaService', async () => {

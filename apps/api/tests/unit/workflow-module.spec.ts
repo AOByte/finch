@@ -1,4 +1,8 @@
-import { describe, it, expect, vi, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
+
+beforeAll(() => {
+  process.env.ENCRYPTION_KEY = 'a'.repeat(64);
+});
 
 const { mockConnect, MockWorkflowClient } = vi.hoisted(() => {
   const mockConnect = vi.fn().mockResolvedValue({ fake: 'connection' });
