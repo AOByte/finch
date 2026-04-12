@@ -94,6 +94,10 @@ describe('Module stubs', () => {
     const mod = await Test.createTestingModule({ imports: [AgentModule] })
       .overrideProvider(PrismaService)
       .useValue(mockPrisma)
+      .overrideProvider(WorkflowClient)
+      .useValue({})
+      .overrideProvider(TemporalWorkerService)
+      .useValue({})
       .compile();
     expect(mod).toBeDefined();
   }, 15000);
