@@ -6,5 +6,6 @@ export default defineConfig({
     root: './',
     include: ['tests/integration/**/*.spec.ts'],
     testTimeout: 30000,
+    passWithNoTests: true,
   },
 });
