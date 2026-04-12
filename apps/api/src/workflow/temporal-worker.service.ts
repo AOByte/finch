@@ -2,13 +2,17 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { Worker, NativeConnection } from '@temporalio/worker';
 import { createStubActivities } from './stub-activities';
 import { RunRepository } from '../persistence/run.repository';
-import path from 'path';
 
 @Injectable()
 export class TemporalWorkerService implements OnModuleInit {
   private readonly logger = new Logger(TemporalWorkerService.name);
 
   constructor(private readonly runRepository: RunRepository) {}
+
+  /** Resolve path to the compiled workflow bundle entry point. */
+  resolveWorkflowsPath(): string {
+    return require.resolve('./finch.workflow');
+  }
 
   async onModuleInit(): Promise<void> {
     const address =
@@ -22,11 +26,9 @@ export class TemporalWorkerService implements OnModuleInit {
       },
     });
 
-    const workflowsPath = path.resolve(__dirname, 'finch.workflow');
-
     const worker = await Worker.create({
       connection,
-      workflowsPath,
+      workflowsPath: this.resolveWorkflowsPath(),
       activities,
       taskQueue: 'finch',
     });

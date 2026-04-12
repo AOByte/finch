@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import Module from 'module';
+import path from 'path';
 
 const { mockRun, mockWorkerCreate, mockNativeConnect, mockCreateStubActivities } = vi.hoisted(() => {
   const mockRun = vi.fn().mockReturnValue({
@@ -20,6 +22,15 @@ vi.mock('@temporalio/worker', () => ({
 vi.mock('../../src/workflow/stub-activities', () => ({
   createStubActivities: mockCreateStubActivities,
 }));
+
+// Intercept require.resolve so it can find finch.workflow (.ts) in the test context
+const origResolveFilename = (Module as Record<string, unknown>)._resolveFilename as Function;
+(Module as Record<string, unknown>)._resolveFilename = function (request: string, parent: { filename?: string }, ...rest: unknown[]) {
+  if (request === './finch.workflow' && parent?.filename?.includes('temporal-worker.service')) {
+    return path.resolve(__dirname, '../../src/workflow/finch.workflow.ts');
+  }
+  return origResolveFilename.call(this, request, parent, ...rest);
+};
 
 import { TemporalWorkerService } from '../../src/workflow/temporal-worker.service';
 import { RunRepository } from '../../src/persistence/run.repository';
@@ -63,11 +74,16 @@ describe('TemporalWorkerService', () => {
     expect(mockNativeConnect).toHaveBeenCalledWith({ address: 'custom:9876' });
   });
 
-  it('passes workflowsPath containing finch.workflow to Worker.create', async () => {
+  it('passes workflowsPath from resolveWorkflowsPath to Worker.create', async () => {
     await service.onModuleInit();
 
     const createCall = mockWorkerCreate.mock.calls[0][0];
     expect(createCall.workflowsPath).toContain('finch.workflow');
+  });
+
+  it('resolveWorkflowsPath returns path containing finch.workflow', () => {
+    const resolved = service.resolveWorkflowsPath();
+    expect(resolved).toContain('finch.workflow');
   });
 
   it('creates activities with markRunCompletedInDb callback', async () => {
