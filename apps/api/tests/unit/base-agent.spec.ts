@@ -54,6 +54,10 @@ class TestAgent extends BaseAgent<string, string> {
     return response.text;
   }
 
+  parseFallback(response: LLMResponse): string {
+    return `fallback:${response.text}`;
+  }
+
   async executeToolCall(
     toolName: string,
     _toolInput: Record<string, unknown>,
@@ -332,6 +336,87 @@ describe('BaseAgent', () => {
 
     const callArgs = mockLLM.complete.mock.calls[0][0];
     expect(callArgs.maxTokens).toBe(4096);
+  });
+
+  it('run() retries once on parseOutput failure then returns parseFallback result', async () => {
+    // Create a special agent that throws on parseOutput for non-JSON
+    class FailParseAgent extends TestAgent {
+      parseOutput(response: LLMResponse): string {
+        try {
+          return JSON.parse(response.text);
+        } catch {
+          throw new Error('parse failed');
+        }
+      }
+      parseFallback(response: LLMResponse): string {
+        return `fallback:${response.text}`;
+      }
+    }
+
+    const failAgent = new FailParseAgent(mockLLM as unknown as LLMConnector);
+
+    // First call: non-JSON → parse fails → retry message injected
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'not json',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+    // Second call (retry): still non-JSON → parseFallback used
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'still not json',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const result = await failAgent.run('test', makeContext());
+    expect(result).toBe('fallback:still not json');
+    expect(mockLLM.complete).toHaveBeenCalledTimes(2);
+
+    // Verify parse_output_fallback audit events were logged
+    const fallbackLogs = failAgent.auditLogs.filter((l) => l.eventType === 'parse_output_fallback');
+    expect(fallbackLogs.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('run() returns parsed output if retry succeeds with valid JSON', async () => {
+    class FailParseAgent extends TestAgent {
+      parseOutput(response: LLMResponse): string {
+        const parsed = JSON.parse(response.text);
+        return parsed.value;
+      }
+      parseFallback(response: LLMResponse): string {
+        return `fallback:${response.text}`;
+      }
+    }
+
+    const failAgent = new FailParseAgent(mockLLM as unknown as LLMConnector);
+
+    // First call: non-JSON → parse fails → retry
+    mockLLM.complete.mockResolvedValueOnce({
+      text: 'not json',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+    // Second call (retry): valid JSON → parseOutput succeeds
+    mockLLM.complete.mockResolvedValueOnce({
+      text: '{"value":"success"}',
+      content: [],
+      toolUses: [],
+      usage: { inputTokens: 10, outputTokens: 5 },
+      stopReason: 'end_turn',
+    });
+
+    const result = await failAgent.run('test', makeContext());
+    expect(result).toBe('success');
+
+    // Only 1 fallback audit event (from first failure)
+    const fallbackLogs = failAgent.auditLogs.filter((l) => l.eventType === 'parse_output_fallback');
+    expect(fallbackLogs).toHaveLength(1);
   });
 
   it('run() includes tool_result messages in conversation', async () => {

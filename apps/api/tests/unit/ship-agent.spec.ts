@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ShipAgentService } from '../../src/agents/ship-agent.service';
 import { GateEvent } from '../../src/agents/gate-event';
+import { ParseOutputError } from '../../src/agents/errors';
 
 describe('ShipAgentService', () => {
   const mockAuditLogger = { log: vi.fn().mockResolvedValue(undefined) };
@@ -71,12 +72,20 @@ describe('ShipAgentService', () => {
     expect(result.commitSha).toBe('abc123');
   });
 
-  it('parseOutput handles invalid JSON', () => {
-    const result = service.parseOutput({
+  it('parseOutput throws ParseOutputError on invalid JSON', () => {
+    expect(() => service.parseOutput({
+      text: 'not json', content: [], toolUses: [],
+      usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
+    })).toThrow(ParseOutputError);
+  });
+
+  it('parseFallback returns stub ship result', () => {
+    const result = service.parseFallback({
       text: 'not json', content: [], toolUses: [],
       usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });
     expect(result.commitSha).toBe('stub-sha');
+    expect(result.repoId).toBe('');
   });
 
   it('executeToolCall handles stage_memory tool', async () => {
@@ -113,6 +122,23 @@ describe('ShipAgentService', () => {
     expect((result as { repoId: string }).repoId).toBe('repo1');
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_started' }));
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_completed' }));
+  });
+
+  it('runShip returns GateEvent if run() somehow returns one (defensive)', async () => {
+    // Directly test the GateEvent branch in runShip by spying on run()
+    const gate = new GateEvent({
+      phase: 'SHIP', runId: 'r1', harnessId: 'h1',
+      gapDescription: 'gap', question: 'q',
+      source: { type: 'webhook', channelId: 'c', messageId: 'm', threadTs: 't', authorId: 'a', timestamp: '2024-01-01' },
+      agentId: 'ship-default', pipelinePosition: 0,
+    });
+    vi.spyOn(service, 'run').mockResolvedValue(gate);
+
+    const plan = { runId: 'r1', hasGap: false, steps: [] };
+    const report = { runId: 'r1', hasGap: false, allPassing: true, results: [] };
+    const context = { runId: 'r1', harnessId: 'h1', hasGap: false, files: [], dependencies: [] };
+    const result = await service.runShip(plan, report, context, 'repo1', makeContext() as never);
+    expect(result).toBeInstanceOf(GateEvent);
   });
 
   it('runShip blocks fire_gate in SHIP phase (FC-07) and continues', async () => {

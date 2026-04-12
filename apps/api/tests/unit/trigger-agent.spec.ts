@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { TriggerAgentService } from '../../src/agents/trigger-agent.service';
 import { GateEvent } from '../../src/agents/gate-event';
+import { ParseOutputError } from '../../src/agents/errors';
 
 describe('TriggerAgentService', () => {
   const mockAuditLogger = { log: vi.fn().mockResolvedValue(undefined) };
@@ -52,13 +53,21 @@ describe('TriggerAgentService', () => {
     expect(result.normalizedPrompt).toBe('fix');
   });
 
-  it('parseOutput handles invalid JSON', () => {
-    const result = service.parseOutput({
+  it('parseOutput throws ParseOutputError on invalid JSON', () => {
+    expect(() => service.parseOutput({
+      text: 'not json', content: [], toolUses: [],
+      usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
+    })).toThrow(ParseOutputError);
+  });
+
+  it('parseFallback returns basic descriptor from text', () => {
+    const result = service.parseFallback({
       text: 'not json', content: [], toolUses: [],
       usage: { inputTokens: 0, outputTokens: 0 }, stopReason: 'end_turn',
     });
     expect(result.normalizedPrompt).toBe('not json');
     expect(result.intent).toBe('unknown');
+    expect(result.scope).toEqual([]);
   });
 
   it('executeToolCall returns error for any tool', async () => {
@@ -79,6 +88,20 @@ describe('TriggerAgentService', () => {
     expect((result as { runId: string }).runId).toBe('r1');
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_started' }));
     expect(mockAuditLogger.log).toHaveBeenCalledWith(expect.objectContaining({ eventType: 'phase_completed' }));
+  });
+
+  it('runTrigger returns GateEvent if run() somehow returns one (defensive)', async () => {
+    const gate = new GateEvent({
+      phase: 'TRIGGER', runId: 'r1', harnessId: 'h1',
+      gapDescription: 'gap', question: 'q',
+      source: { type: 'webhook', channelId: 'c', messageId: 'm', threadTs: 't', authorId: 'a', timestamp: '2024-01-01' },
+      agentId: 'trigger-default', pipelinePosition: 0,
+    });
+    vi.spyOn(service, 'run').mockResolvedValue(gate);
+
+    const input = { rawText: 'test', harnessId: 'h1', runId: 'r1', source: {} as never };
+    const result = await service.runTrigger(input, makeContext() as never);
+    expect(result).toBeInstanceOf(GateEvent);
   });
 
   it('runTrigger blocks fire_gate in TRIGGER phase (FC-01) and continues', async () => {

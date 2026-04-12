@@ -27,6 +27,7 @@ export const NON_CRITICAL_AUDIT_EVENT_TYPES = [
   'agent_completed',
   'gate_resumed',
   'agent_anomaly',
+  'parse_output_fallback',
 ] as const;
 
 export const REQUIRED_AUDIT_EVENT_TYPES = [

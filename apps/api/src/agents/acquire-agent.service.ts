@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseAgent } from './base-agent';
 import { GateEvent } from './gate-event';
+import { ParseOutputError } from './errors';
 import type {
   LLMConnector,
   LLMResponse,
@@ -54,17 +55,22 @@ export class AcquireAgentService extends BaseAgent<TaskDescriptor, ContextObject
 
   parseOutput(response: LLMResponse): ContextObject {
     try {
-      const parsed = JSON.parse(response.text);
-      return parsed as ContextObject;
-    } catch {
-      return {
-        runId: '',
-        harnessId: '',
-        hasGap: false,
-        files: [],
-        dependencies: [],
-      };
+      return JSON.parse(response.text) as ContextObject;
+    } catch (err) {
+      throw new ParseOutputError(
+        `AcquireAgent failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
+  }
+
+  parseFallback(response: LLMResponse): ContextObject {
+    return {
+      runId: '',
+      harnessId: '',
+      hasGap: false,
+      files: [],
+      dependencies: [],
+    };
   }
 
   async executeToolCall(

@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { BaseAgent, AgentLoopParams } from './base-agent';
 import { GateEvent } from './gate-event';
+import { ParseOutputError } from './errors';
 import type {
   LLMConnector,
   LLMResponse,
@@ -42,18 +43,22 @@ export class TriggerAgentService extends BaseAgent<RawTriggerInput, TaskDescript
 
   parseOutput(response: LLMResponse): TaskDescriptor {
     try {
-      const parsed = JSON.parse(response.text);
-      return parsed as TaskDescriptor;
-    } catch {
-      // If LLM didn't return JSON, create a basic descriptor from the text
-      return {
-        runId: '',
-        harnessId: '',
-        normalizedPrompt: response.text,
-        intent: 'unknown',
-        scope: [],
-      };
+      return JSON.parse(response.text) as TaskDescriptor;
+    } catch (err) {
+      throw new ParseOutputError(
+        `TriggerAgent failed to parse JSON: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
+  }
+
+  parseFallback(response: LLMResponse): TaskDescriptor {
+    return {
+      runId: '',
+      harnessId: '',
+      normalizedPrompt: response.text,
+      intent: 'unknown',
+      scope: [],
+    };
   }
 
   async executeToolCall(

@@ -23,6 +23,7 @@ export abstract class BaseAgent<TInput, TOutput> {
   abstract buildInitialMessage(input: TInput): string;
   abstract buildToolSet(context: AgentContext): Tool[];
   abstract parseOutput(response: LLMResponse): TOutput;
+  abstract parseFallback(response: LLMResponse): TOutput;
   abstract executeToolCall(
     toolName: string,
     toolInput: Record<string, unknown>,
@@ -53,6 +54,7 @@ export abstract class BaseAgent<TInput, TOutput> {
     const messages: Message[] = [
       { role: 'user', content: params.initialMessage },
     ];
+    let parseRetried = false;
 
     for (let iteration = 0; iteration < 50; iteration++) {
       const response = await params.llm.complete({
@@ -82,7 +84,36 @@ export abstract class BaseAgent<TInput, TOutput> {
       messages.push({ role: 'assistant', content: response.text });
 
       if (response.stopReason === 'end_turn') {
-        return this.parseOutput(response);
+        try {
+          return this.parseOutput(response);
+        } catch (parseErr) {
+          // W4-00b: Emit audit event on parse failure and retry once
+          await this.auditLog({
+            runId: params.context.runId,
+            harnessId: params.context.harnessId,
+            phase: params.context.phase,
+            eventType: 'parse_output_fallback',
+            actor: { agentId: params.context.agentConfig.agentId },
+            payload: {
+              rawText: response.text.slice(0, 500),
+              error: parseErr instanceof Error ? parseErr.message : String(parseErr),
+              iteration,
+            },
+          });
+
+          // Retry once: ask the LLM to produce valid JSON
+          if (!parseRetried) {
+            parseRetried = true;
+            messages.push({
+              role: 'user',
+              content: 'Your previous response was not valid JSON. Please respond ONLY with a valid JSON object matching the expected schema.',
+            });
+            continue;
+          }
+
+          // Already retried once — use the fallback
+          return this.parseFallback(response);
+        }
       }
 
       if (response.stopReason === 'tool_use') {
