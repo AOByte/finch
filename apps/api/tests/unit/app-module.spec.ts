@@ -1,8 +1,17 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, vi, afterEach } from 'vitest';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../../src/app.module';
+import { PrismaService } from '../../src/persistence/prisma.service';
+import { TemporalWorkerService } from '../../src/workflow/temporal-worker.service';
+import { WorkflowClient } from '@temporalio/client';
 import request from 'supertest';
 import type { INestApplication } from '@nestjs/common';
+
+const mockPrisma = {
+  $connect: vi.fn(),
+  $disconnect: vi.fn(),
+  run: { findUnique: vi.fn() },
+};
 
 describe('AppModule', () => {
   const origEnv = process.env.NODE_ENV;
@@ -14,7 +23,14 @@ describe('AppModule', () => {
   it('should compile the module with all imports', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(mockPrisma)
+      .overrideProvider(TemporalWorkerService)
+      .useValue({})
+      .overrideProvider(WorkflowClient)
+      .useValue({})
+      .compile();
 
     expect(moduleRef).toBeDefined();
   });
@@ -22,7 +38,14 @@ describe('AppModule', () => {
   it('should resolve the HealthController', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(mockPrisma)
+      .overrideProvider(TemporalWorkerService)
+      .useValue({})
+      .overrideProvider(WorkflowClient)
+      .useValue({})
+      .compile();
 
     const app = moduleRef.createNestApplication();
     await app.init();
@@ -39,7 +62,14 @@ describe('AppModule', () => {
 
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(mockPrisma)
+      .overrideProvider(TemporalWorkerService)
+      .useValue({})
+      .overrideProvider(WorkflowClient)
+      .useValue({})
+      .compile();
 
     const app = moduleRef.createNestApplication();
     await app.init();
@@ -50,13 +80,18 @@ describe('AppModule', () => {
   it('should handle HTTP requests (exercises pino customProps)', async () => {
     const moduleRef = await Test.createTestingModule({
       imports: [AppModule],
-    }).compile();
+    })
+      .overrideProvider(PrismaService)
+      .useValue(mockPrisma)
+      .overrideProvider(TemporalWorkerService)
+      .useValue({})
+      .overrideProvider(WorkflowClient)
+      .useValue({})
+      .compile();
 
     const app: INestApplication = moduleRef.createNestApplication();
     await app.init();
 
-    // Making a real HTTP request triggers pino-http middleware,
-    // which calls the customProps function on line 29 of app.module.ts
     const response = await request(app.getHttpServer()).get('/health');
     expect(response.status).toBe(200);
     expect(response.body.status).toBe('ok');
