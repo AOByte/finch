@@ -11,6 +11,6 @@ export class RunsController {
     if (!run) {
       throw new NotFoundException(`Run ${runId} not found`);
     }
-    return run;
+    return { data: run };
   }
 }

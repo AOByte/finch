@@ -16,7 +16,7 @@ describe('RunsController', () => {
     const run = { runId: 'r1', status: 'RUNNING' };
     runRepo.findById.mockResolvedValue(run);
     const result = await controller.getRunById('r1');
-    expect(result).toBe(run);
+    expect(result).toEqual({ data: run });
     expect(runRepo.findById).toHaveBeenCalledWith('r1');
   });
 
