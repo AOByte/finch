@@ -21,7 +21,7 @@ Before starting any task: read AGENTS.md, RULES.md, and the relevant skill file 
   - `finch-temporal-ui` — `temporalio/ui:2.26`, port 8080, env `TEMPORAL_ADDRESS=finch-temporal:7233`
   - Include Docker `healthcheck` blocks for `finch-postgres` and `finch-redis`.
 
-- [ ] **W1-03** — Write `infra/healthcheck.sh`. Must check: `finch-postgres` accepts connections, `finch-redis` responds to PING, `finch-temporal-ui` returns HTTP 200 at `http://localhost:8080`. Exit 0 only when all three pass. Exit 1 with a message identifying which service failed. Verify: `docker compose -f infra/docker-compose.yml up -d` then `bash infra/healthcheck.sh` exits 0.
+- [x] **W1-03** — Write `infra/healthcheck.sh`. Must check: `finch-postgres` accepts connections, `finch-redis` responds to PING, `finch-temporal-ui` returns HTTP 200 at `http://localhost:8080`. Exit 0 only when all three pass. Exit 1 with a message identifying which service failed. Verify: `docker compose -f infra/docker-compose.yml up -d` then `bash infra/healthcheck.sh` exits 0.
 
 - [ ] **W1-04** — Scaffold `apps/api` as a NestJS 10 application. Configure `tsconfig.json` with `strict: true`, `strictNullChecks: true`. Install all dependencies from the tech stack table in AGENTS.md section 5. API runs on port 3001.
 
