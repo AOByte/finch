@@ -4,6 +4,9 @@
   "sourceRoot": "src",
   "entryFile": "apps/api/src/main",
   "compilerOptions": {
-    "tsConfigPath": "tsconfig.build.json"
+    "tsConfigPath": "tsconfig.build.json",
+    "assets": [
+      { "include": "oauth/providers.json", "outDir": "dist/apps/api/src", "watchAssets": true }
+    ]
   }
 }
