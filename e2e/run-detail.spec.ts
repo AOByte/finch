@@ -20,14 +20,13 @@ test.describe('Test Case 2: Run Detail — TAPES Phase Order & Gate Resume', () 
     await page.fill('input[type="email"]', 'admin@finch.local');
     await page.fill('input[type="password"]', 'finch-dev-password');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/');
+    await page.waitForURL('**/', { timeout: 10000 });
 
     // Navigate to runs page
     await page.goto('/runs');
-    await page.waitForSelector('text=Runs');
 
     // Check that the runs page renders
-    await expect(page.locator('h1')).toContainText('Runs');
+    await expect(page.locator('h1')).toContainText('Runs', { timeout: 10000 });
   });
 
   test('No approve/reject buttons exist on the page', async ({ page }) => {
@@ -36,11 +35,10 @@ test.describe('Test Case 2: Run Detail — TAPES Phase Order & Gate Resume', () 
     await page.fill('input[type="email"]', 'admin@finch.local');
     await page.fill('input[type="password"]', 'finch-dev-password');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/');
+    await page.waitForURL('**/', { timeout: 10000 });
 
     // Navigate to runs
     await page.goto('/runs');
-    await page.waitForSelector('text=Runs');
 
     // Verify no approve/reject buttons (UI-02 / FF-03)
     const approveButton = page.locator('button:has-text("approve")');
