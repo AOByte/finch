@@ -23,6 +23,9 @@ import { ConnectorSettingsModule } from './connector-settings/connector-settings
       connection: {
         host: process.env.REDIS_HOST ?? 'localhost',
         port: parseInt(process.env.REDIS_PORT ?? '6379', 10),
+        ...(process.env.REDIS_PASSWORD
+          ? { password: process.env.REDIS_PASSWORD }
+          : {}),
       },
     }),
     LoggerModule.forRootAsync({
