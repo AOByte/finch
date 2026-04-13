@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { LockedPreambleGuard } from '../auth/guards/locked-preamble.guard';
 import { PrismaService } from '../persistence/prisma.service';
 import { HarnessRepository } from '../persistence/harness.repository';
+import { AgentDispatcherService } from '../orchestrator/agent-dispatcher.service';
 
 @Controller('api/agents')
 @UseGuards(JwtAuthGuard)
@@ -22,7 +23,13 @@ export class AgentsController {
   constructor(
     private readonly prisma: PrismaService,
     private readonly harnessRepository: HarnessRepository,
+    private readonly dispatcher: AgentDispatcherService,
   ) {}
+
+  @Get('preamble')
+  getPreamble() {
+    return { data: { preamble: this.dispatcher.getLockedPreamble() } };
+  }
 
   @Get()
   async list(

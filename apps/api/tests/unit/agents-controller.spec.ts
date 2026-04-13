@@ -3,6 +3,7 @@ import { NotFoundException } from '@nestjs/common';
 import { AgentsController } from '../../src/api/agents.controller';
 import { PrismaService } from '../../src/persistence/prisma.service';
 import { HarnessRepository } from '../../src/persistence/harness.repository';
+import { AgentDispatcherService } from '../../src/orchestrator/agent-dispatcher.service';
 
 describe('AgentsController', () => {
   let controller: AgentsController;
@@ -16,6 +17,7 @@ describe('AgentsController', () => {
     };
   };
   let harnessRepo: { findByName: ReturnType<typeof vi.fn> };
+  let dispatcher: { getLockedPreamble: ReturnType<typeof vi.fn> };
   const H1 = '00000000-0000-0000-0000-000000000001';
 
   beforeEach(() => {
@@ -29,9 +31,11 @@ describe('AgentsController', () => {
       },
     };
     harnessRepo = { findByName: vi.fn() };
+    dispatcher = { getLockedPreamble: vi.fn().mockReturnValue('locked preamble text') };
     controller = new AgentsController(
       prisma as unknown as PrismaService,
       harnessRepo as unknown as HarnessRepository,
+      dispatcher as unknown as AgentDispatcherService,
     );
   });
 
@@ -100,6 +104,12 @@ describe('AgentsController', () => {
   it('create throws BadRequestException when fields missing', async () => {
     const { BadRequestException } = await import('@nestjs/common');
     await expect(controller.create({ harnessId: '', phase: '', position: 0, agentId: '', llmConnectorId: '', model: '' })).rejects.toThrow(BadRequestException);
+  });
+
+  it('getPreamble returns { data } envelope with preamble text', () => {
+    const result = controller.getPreamble();
+    expect(result).toEqual({ data: { preamble: 'locked preamble text' } });
+    expect(dispatcher.getLockedPreamble).toHaveBeenCalled();
   });
 
   it('list filters by phase when provided', async () => {

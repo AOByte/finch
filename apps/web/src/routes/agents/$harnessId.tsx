@@ -18,6 +18,10 @@ interface AgentsResponse {
   data: AgentConfig[];
 }
 
+interface PreambleResponse {
+  data: { preamble: string };
+}
+
 const TAPES_ORDER = ['TRIGGER', 'ACQUIRE', 'PLAN', 'EXECUTE', 'SHIP'];
 
 export function AgentsPage() {
@@ -27,6 +31,11 @@ export function AgentsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ['agents', harnessId],
     queryFn: () => apiGet<AgentsResponse>(`/api/agents?harnessId=${harnessId}`),
+  });
+
+  const { data: preambleData } = useQuery({
+    queryKey: ['preamble'],
+    queryFn: () => apiGet<PreambleResponse>('/api/agents/preamble'),
   });
 
   const agents = data?.data ?? [];
@@ -49,7 +58,7 @@ export function AgentsPage() {
   return (
     <div style={{ padding: 24 }}>
       <h1 style={{ fontSize: 24, marginBottom: 16 }}>Agent Pipeline — {harnessId}</h1>
-      <AgentPipelineEditor agents={sorted} onSave={handleSave} />
+      <AgentPipelineEditor agents={sorted} onSave={handleSave} lockedPreamble={preambleData?.data.preamble} />
     </div>
   );
 }

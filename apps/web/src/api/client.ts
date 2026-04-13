@@ -53,9 +53,14 @@ export async function apiClient<T>(
       if (retryRes.ok) {
         return retryRes.json() as Promise<T>;
       }
+      if (retryRes.status !== 401) {
+        // Non-auth error on retry — handle as normal error, not auth failure
+        const body = await retryRes.json().catch(() => ({ message: retryRes.statusText }));
+        throw new Error((body as { message?: string }).message ?? retryRes.statusText);
+      }
     }
 
-    // Refresh failed — redirect to login
+    // Refresh failed or retry still 401 — redirect to login
     window.location.href = '/login';
     throw new Error('Unauthorized');
   }
