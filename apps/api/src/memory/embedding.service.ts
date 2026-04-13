@@ -10,9 +10,9 @@ export class EmbeddingService {
   constructor(private readonly config: ConfigService) {
     const apiKey = this.config.get<string>('OPENAI_API_KEY');
     if (!apiKey) {
-      throw new Error('OPENAI_API_KEY must be configured for embedding service');
+      this.logger.warn('OPENAI_API_KEY not configured — embedding calls will fail');
     }
-    this.client = new OpenAI({ apiKey });
+    this.client = new OpenAI({ apiKey: apiKey ?? '' });
   }
 
   async embed(text: string): Promise<number[]> {

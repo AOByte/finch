@@ -22,9 +22,9 @@ describe('EmbeddingService', () => {
     service = new EmbeddingService(config);
   });
 
-  it('throws when OPENAI_API_KEY is not configured', () => {
+  it('warns but does not throw when OPENAI_API_KEY is not configured', () => {
     const config = new ConfigService({});
-    expect(() => new EmbeddingService(config)).toThrow('OPENAI_API_KEY must be configured');
+    expect(() => new EmbeddingService(config)).not.toThrow();
   });
 
   it('embed returns a 1536-element number[]', async () => {
