@@ -156,20 +156,23 @@ jobs:
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
       - run: npx playwright install chromium --with-deps
+      - name: Install Temporal CLI
+        run: |
+          curl -sSf https://temporal.download/cli.sh | sh
+          echo "${HOME}/.temporalio/bin" >> $GITHUB_PATH
       - name: Wait for Temporal to be ready
         run: |
-          echo "Waiting for Temporal gRPC on port 7233..."
+          echo "Waiting for Temporal to be fully ready (gRPC health check)..."
           for i in $(seq 1 120); do
-            if nc -z localhost 7233 2>/dev/null; then
-              echo "Temporal port is open! Waiting 10s for full initialization..."
-              sleep 10
-              echo "Temporal is ready!"
+            if temporal operator cluster health --address localhost:7233 2>/dev/null | grep -q SERVING; then
+              echo "Temporal is ready and SERVING!"
               break
             fi
             if [ $i -eq 120 ]; then
-              echo "Temporal failed to start within 10 minutes"
+              echo "Temporal failed to become ready within 10 minutes"
               exit 1
             fi
+            echo "Attempt $i: Temporal not ready yet, waiting 5s..."
             sleep 5
           done
       - name: Start API server
