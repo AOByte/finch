@@ -1,21 +1,23 @@
-import { NodeSDK } from '@opentelemetry/sdk-node';
-import { PrometheusExporter } from '@opentelemetry/exporter-prometheus';
 import { metrics } from '@opentelemetry/api';
-import { MeterProvider } from '@opentelemetry/sdk-metrics';
 
-const prometheusExporter = new PrometheusExporter({ port: 9464 });
+// Only start the full SDK + Prometheus exporter outside of test environments.
+// In tests, the noop meter provider is used (counters/histograms are no-ops).
+const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
 
-const meterProvider = new MeterProvider({
-  readers: [prometheusExporter],
-});
+if (!isTest) {
+  /* eslint-disable @typescript-eslint/no-require-imports */
+  const { NodeSDK } = require('@opentelemetry/sdk-node');
+  const { PrometheusExporter } = require('@opentelemetry/exporter-prometheus');
+  const { MeterProvider } = require('@opentelemetry/sdk-metrics');
+  /* eslint-enable @typescript-eslint/no-require-imports */
 
-metrics.setGlobalMeterProvider(meterProvider);
+  const prometheusExporter = new PrometheusExporter({ port: 9464 });
+  const meterProvider = new MeterProvider({ readers: [prometheusExporter] });
+  metrics.setGlobalMeterProvider(meterProvider);
 
-const sdk = new NodeSDK({
-  metricReader: prometheusExporter,
-});
-
-sdk.start();
+  const sdk = new NodeSDK({ metricReader: prometheusExporter });
+  sdk.start();
+}
 
 // Create custom Finch meters
 const meter = metrics.getMeter('finch');
