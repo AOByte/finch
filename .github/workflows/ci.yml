@@ -140,6 +140,12 @@ jobs:
           POSTGRES_SEEDS: postgres
         ports:
           - 7233:7233
+        options: >-
+          --health-cmd "tctl --address localhost:7233 cluster health"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 30
+          --health-start-period 30s
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -156,16 +162,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
       - run: npx playwright install chromium --with-deps
-      - name: Wait for Temporal to be ready
-        run: |
-          echo "Waiting for Temporal..."
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:7233/api/v1/namespaces > /dev/null 2>&1; then
-              echo "Temporal is up!"
-              break
-            fi
-            sleep 3
-          done
       - name: Start API server
         run: pnpm --filter api dev &
         env:
