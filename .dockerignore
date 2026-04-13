@@ -1,0 +1,11 @@
+node_modules
+dist
+.git
+.env
+*.md
+!README.md
+e2e
+.vite
+.vitest
+coverage
+*.tsbuildinfo
