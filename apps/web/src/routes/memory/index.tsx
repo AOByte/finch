@@ -20,7 +20,7 @@ interface MemoryResponse {
 export function MemoryPage() {
   const [search, setSearch] = useState('');
   const [newContent, setNewContent] = useState('');
-  const [newType, setNewType] = useState('FACT');
+  const [newType, setNewType] = useState('TaskPattern');
   const queryClient = useQueryClient();
 
   const queryParams = search
@@ -73,10 +73,12 @@ export function MemoryPage() {
             onChange={(e) => setNewType(e.target.value)}
             style={{ padding: 8, border: '1px solid #d1d5db', borderRadius: 4, fontSize: 13 }}
           >
-            <option value="FACT">FACT</option>
-            <option value="DECISION">DECISION</option>
-            <option value="PREFERENCE">PREFERENCE</option>
-            <option value="LESSON_LEARNED">LESSON_LEARNED</option>
+            <option value="TaskPattern">TaskPattern</option>
+            <option value="FileConvention">FileConvention</option>
+            <option value="TeamConvention">TeamConvention</option>
+            <option value="GatePattern">GatePattern</option>
+            <option value="RiskSignal">RiskSignal</option>
+            <option value="RepoMap">RepoMap</option>
           </select>
           <textarea
             value={newContent}

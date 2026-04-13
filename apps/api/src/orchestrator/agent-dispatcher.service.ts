@@ -202,10 +202,10 @@ export class AgentDispatcherService {
           return result;
         }
 
-        // Check soft rules after agent invocation
+        // Check soft rules after agent invocation (against agent output, not input)
         const softResult = await this.ruleEnforcement.checkSoftRules(
           agentConfig.rules,
-          currentArtifact,
+          result,
         );
         for (const deviation of softResult.deviations) {
           await this.auditLogger.log({

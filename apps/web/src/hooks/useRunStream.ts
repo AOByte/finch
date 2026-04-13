@@ -1,4 +1,4 @@
-import { useEffect, useCallback, useRef } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { getSocket } from '../lib/socket';
 
@@ -12,7 +12,6 @@ interface RunEvent {
 
 export function useRunStream(harnessId: string, runId?: string) {
   const queryClient = useQueryClient();
-  const joinedRef = useRef(false);
 
   const invalidateRun = useCallback(() => {
     if (runId) {
@@ -30,11 +29,8 @@ export function useRunStream(harnessId: string, runId?: string) {
       socket.connect();
     }
 
-    // Must join harness room before receiving events
-    if (!joinedRef.current) {
-      socket.emit('join_harness', harnessId);
-      joinedRef.current = true;
-    }
+    // Join harness room (re-joins on harnessId change)
+    socket.emit('join_harness', harnessId);
 
     const handleEvent = (_event: RunEvent) => {
       invalidateRun();
@@ -44,6 +40,7 @@ export function useRunStream(harnessId: string, runId?: string) {
 
     return () => {
       socket.off('run.event', handleEvent);
+      socket.emit('leave_harness', harnessId);
     };
   }, [harnessId, invalidateRun]);
 }
