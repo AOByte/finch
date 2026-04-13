@@ -3,9 +3,9 @@ services:
     image: pgvector/pgvector:pg16
     container_name: finch-postgres
     environment:
-      POSTGRES_USER: finch
-      POSTGRES_PASSWORD: finch
-      POSTGRES_DB: finch
+      POSTGRES_USER: ${POSTGRES_USER:-finch}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-finch}
     ports:
       - '5432:5432'
     volumes:
@@ -19,10 +19,11 @@ services:
   finch-redis:
     image: redis:7-alpine
     container_name: finch-redis
+    command: redis-server --requirepass ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
     ports:
       - '6379:6379'
     healthcheck:
-      test: ['CMD', 'redis-cli', 'ping']
+      test: ['CMD', 'redis-cli', '-a', '${REDIS_PASSWORD}', 'ping']
       interval: 5s
       timeout: 5s
       retries: 10
@@ -33,8 +34,8 @@ services:
     environment:
       DB: postgres12
       DB_PORT: 5432
-      POSTGRES_USER: finch
-      POSTGRES_PWD: finch
+      POSTGRES_USER: ${POSTGRES_USER:-finch}
+      POSTGRES_PWD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
       POSTGRES_SEEDS: finch-postgres
     ports:
       - '7233:7233'

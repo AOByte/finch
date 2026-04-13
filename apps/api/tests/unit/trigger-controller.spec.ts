@@ -14,6 +14,9 @@ describe('TriggerController', () => {
   const mockWorkflowClient = {
     start: vi.fn().mockResolvedValue(undefined),
   };
+  const mockWebhookConnector = {
+    validateSignature: vi.fn(),
+  };
 
   let controller: TriggerController;
 
@@ -23,6 +26,7 @@ describe('TriggerController', () => {
       mockRunRepository as never,
       mockHarnessRepository as never,
       mockWorkflowClient as never,
+      mockWebhookConnector as never,
     );
   });
 
@@ -32,8 +36,14 @@ describe('TriggerController', () => {
       name: 'default',
     });
 
-    const result = await controller.trigger('default', { rawText: 'fix it' });
+    const result = await controller.trigger(
+      'default',
+      'sha256=abc',
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'fix it' })) } as never,
+      { rawText: 'fix it' },
+    );
 
+    expect(mockWebhookConnector.validateSignature).toHaveBeenCalled();
     expect(mockHarnessRepository.findByName).toHaveBeenCalledWith('default');
     expect(mockRunRepository.create).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -52,12 +62,17 @@ describe('TriggerController', () => {
     mockHarnessRepository.findByName.mockResolvedValue(null);
 
     await expect(
-      controller.trigger('default', { rawText: 'fix it' }),
+      controller.trigger('default', 'sha256=abc', { rawBody: Buffer.from('{}') } as never, { rawText: 'fix it' }),
     ).rejects.toThrow(NotFoundException);
   });
 
   it('trigger with UUID uses it directly', async () => {
-    const result = await controller.trigger('some-uuid', { rawText: 'do something' });
+    const result = await controller.trigger(
+      'some-uuid',
+      'sha256=abc',
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'do something' })) } as never,
+      { rawText: 'do something' },
+    );
 
     expect(mockHarnessRepository.findByName).not.toHaveBeenCalled();
     expect(mockRunRepository.create).toHaveBeenCalledWith(
@@ -67,10 +82,12 @@ describe('TriggerController', () => {
   });
 
   it('trigger uses provided runId when present', async () => {
-    const result = await controller.trigger('h1', {
-      rawText: 'task',
-      runId: 'custom-run-id',
-    });
+    const result = await controller.trigger(
+      'h1',
+      'sha256=abc',
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'task', runId: 'custom-run-id' })) } as never,
+      { rawText: 'task', runId: 'custom-run-id' },
+    );
 
     expect(result.data.runId).toBe('custom-run-id');
     expect(result.data.temporalWorkflowId).toBe('finch-custom-run-id');
@@ -82,7 +99,12 @@ describe('TriggerController', () => {
       name: 'default',
     });
 
-    await controller.trigger('default', { rawText: 'fix payments' });
+    await controller.trigger(
+      'default',
+      'sha256=abc',
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'fix payments' })) } as never,
+      { rawText: 'fix payments' },
+    );
 
     expect(mockWorkflowClient.start).toHaveBeenCalledWith('finchWorkflow', {
       workflowId: 'finch-test-uuid-1234',

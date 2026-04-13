@@ -72,6 +72,40 @@ export class MemoryController {
       where['type'] = type;
     }
 
+    // Build parameterized query — LIMIT is passed as a parameter, not interpolated
+    const params: unknown[] = [resolvedHarnessId];
+    let paramIdx = 2;
+    let sql: string;
+
+    if (cursor) {
+      const cursorParamIdx = paramIdx++;
+      const typeParamIdx = type ? paramIdx++ : 0;
+      const limitParamIdx = paramIdx++;
+      sql = `SELECT memory_id, harness_id, type::text, content, relevance_tags,
+                source_run_id, content_hash, created_at, updated_at
+         FROM memory_records
+         WHERE harness_id = $1::uuid
+           ${type ? `AND type = $${typeParamIdx}::memory_type` : ''}
+           AND memory_id > $${cursorParamIdx}::uuid
+         ORDER BY memory_id
+         LIMIT $${limitParamIdx}`;
+      params.push(cursor);
+      if (type) params.push(type);
+      params.push(take);
+    } else {
+      const typeParamIdx = type ? paramIdx++ : 0;
+      const limitParamIdx = paramIdx++;
+      sql = `SELECT memory_id, harness_id, type::text, content, relevance_tags,
+                source_run_id, content_hash, created_at, updated_at
+         FROM memory_records
+         WHERE harness_id = $1::uuid
+           ${type ? `AND type = $${typeParamIdx}::memory_type` : ''}
+         ORDER BY memory_id
+         LIMIT $${limitParamIdx}`;
+      if (type) params.push(type);
+      params.push(take);
+    }
+
     const records = await this.prisma.$queryRawUnsafe<Array<{
       memory_id: string;
       harness_id: string;
@@ -82,27 +116,7 @@ export class MemoryController {
       content_hash: string;
       created_at: Date;
       updated_at: Date;
-    }>>(
-      cursor
-        ? `SELECT memory_id, harness_id, type::text, content, relevance_tags,
-                  source_run_id, content_hash, created_at, updated_at
-           FROM memory_records
-           WHERE harness_id = $1::uuid
-             ${type ? `AND type = $3::memory_type` : ''}
-             AND memory_id > $2::uuid
-           ORDER BY memory_id
-           LIMIT ${take}`
-        : `SELECT memory_id, harness_id, type::text, content, relevance_tags,
-                  source_run_id, content_hash, created_at, updated_at
-           FROM memory_records
-           WHERE harness_id = $1::uuid
-             ${type ? `AND type = $2::memory_type` : ''}
-           ORDER BY memory_id
-           LIMIT ${take}`,
-      ...(cursor
-        ? type ? [resolvedHarnessId, cursor, type] : [resolvedHarnessId, cursor]
-        : type ? [resolvedHarnessId, type] : [resolvedHarnessId]),
-    );
+    }>>(sql, ...params);
 
     const data = records.map((r) => ({
       memoryId: r.memory_id,
