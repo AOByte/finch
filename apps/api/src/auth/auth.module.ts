@@ -36,11 +36,8 @@ import IORedis from 'ioredis';
     {
       provide: REDIS_CLIENT,
       useFactory: (config: ConfigService) => {
-        return new IORedis({
-          host: config.get<string>('REDIS_HOST', 'localhost'),
-          port: config.get<number>('REDIS_PORT', 6379),
-          lazyConnect: true,
-        });
+        const url = config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
+        return new IORedis(url, { lazyConnect: true });
       },
       inject: [ConfigService],
     },

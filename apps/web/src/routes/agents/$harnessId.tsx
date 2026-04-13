@@ -26,7 +26,7 @@ export function AgentsPage() {
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['agents', harnessId],
-    queryFn: () => apiGet<AgentsResponse>(`/api/agents/${harnessId}`),
+    queryFn: () => apiGet<AgentsResponse>(`/api/agents?harnessId=${harnessId}`),
   });
 
   const agents = data?.data ?? [];
@@ -39,10 +39,7 @@ export function AgentsPage() {
   const handleSave = async (agentConfigId: string, updates: { model?: string; systemPromptBody?: string }) => {
     const agent = agents.find((a) => a.agentConfigId === agentConfigId);
     if (!agent) return;
-    await apiPatch(`/api/agents/${harnessId}/${agent.phase}/pipeline`, {
-      ...updates,
-      position: agent.position,
-    });
+    await apiPatch(`/api/agents/${agentConfigId}`, updates);
     queryClient.invalidateQueries({ queryKey: ['agents', harnessId] });
   };
 

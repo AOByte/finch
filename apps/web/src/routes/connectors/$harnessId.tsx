@@ -1,6 +1,6 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useParams } from '@tanstack/react-router';
-import { apiGet, apiPost, apiDelete } from '../../api/client';
+import { apiGet, apiDelete } from '../../api/client';
 import { ConnectorHealthBadge } from '../../components/ConnectorHealthBadge';
 
 interface Connector {
@@ -26,11 +26,6 @@ export function ConnectorsPage() {
   });
 
   const connectors = data?.data ?? [];
-
-  const handleTest = async (connectorId: string) => {
-    await apiPost(`/api/connectors/${connectorId}/test`);
-    queryClient.invalidateQueries({ queryKey: ['connectors', harnessId] });
-  };
 
   const handleDelete = async (connectorId: string) => {
     await apiDelete(`/api/connectors/${connectorId}`);
@@ -58,12 +53,6 @@ export function ConnectorsPage() {
                 <div style={{ fontSize: 12, color: '#6b7280' }}>{c.type}</div>
               </div>
               <ConnectorHealthBadge isActive={c.status === 'ACTIVE'} lastHealthCheck={c.lastCheckedAt} />
-              <button
-                onClick={() => handleTest(c.connectorId)}
-                style={{ padding: '4px 10px', background: '#eff6ff', color: '#2563eb', border: '1px solid #bfdbfe', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}
-              >
-                Test
-              </button>
               <button
                 onClick={() => handleDelete(c.connectorId)}
                 style={{ padding: '4px 10px', background: '#fef2f2', color: '#dc2626', border: '1px solid #fecaca', borderRadius: 4, fontSize: 12, cursor: 'pointer' }}

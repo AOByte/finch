@@ -50,6 +50,7 @@ export class AgentsController {
   }
 
   @Post()
+  @UseGuards(LockedPreambleGuard)
   async create(
     @Body() body: {
       harnessId: string;
