@@ -178,7 +178,7 @@ jobs:
       - name: Build API server
         run: pnpm --filter api build
       - name: Start API server
-        run: node apps/api/dist/main.js &
+        run: node apps/api/dist/apps/api/src/main.js &
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
           REDIS_URL: redis://localhost:6379
@@ -186,6 +186,7 @@ jobs:
           JWT_SECRET: e2e-test-secret
           ANTHROPIC_API_KEY: sk-test-placeholder
           OPENAI_API_KEY: sk-test-placeholder
+          ENCRYPTION_KEY: '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef'
       - name: Start frontend
         run: pnpm --filter web dev &
       - name: Wait for servers to be ready

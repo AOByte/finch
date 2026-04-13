@@ -6,7 +6,6 @@ const isTest = process.env.NODE_ENV === 'test' || process.env.VITEST === 'true';
 
 if (!isTest) {
   /* eslint-disable @typescript-eslint/no-require-imports */
-  const { NodeSDK } = require('@opentelemetry/sdk-node');
   const { PrometheusExporter } = require('@opentelemetry/exporter-prometheus');
   const { MeterProvider } = require('@opentelemetry/sdk-metrics');
   /* eslint-enable @typescript-eslint/no-require-imports */
@@ -14,9 +13,6 @@ if (!isTest) {
   const prometheusExporter = new PrometheusExporter({ port: 9464 });
   const meterProvider = new MeterProvider({ readers: [prometheusExporter] });
   metrics.setGlobalMeterProvider(meterProvider);
-
-  const sdk = new NodeSDK({ metricReader: prometheusExporter });
-  sdk.start();
 }
 
 // Create custom Finch meters
