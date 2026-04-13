@@ -1,0 +1,78 @@
+.filterBar {
+  margin-bottom: 12px;
+}
+
+.filterSelect {
+  padding: 6px 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 13px;
+  background: #fff;
+}
+
+.scrollContainer {
+  height: 500px;
+  overflow-y: auto;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.eventRow {
+  padding: 8px 12px;
+  border-bottom: 1px solid #f3f4f6;
+  cursor: pointer;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+}
+
+.eventRow:hover {
+  background: #f9fafb;
+}
+
+.time {
+  color: #9ca3af;
+  font-size: 12px;
+  min-width: 60px;
+}
+
+.typeBadge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.phase {
+  color: #6b7280;
+  font-size: 12px;
+}
+
+.actor {
+  color: #9ca3af;
+  font-size: 12px;
+}
+
+.summary {
+  color: #374151;
+  font-size: 12px;
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.payload {
+  width: 100%;
+  background: #1f2937;
+  color: #e5e7eb;
+  padding: 12px;
+  border-radius: 6px;
+  font-size: 12px;
+  overflow-x: auto;
+  margin-top: 8px;
+}

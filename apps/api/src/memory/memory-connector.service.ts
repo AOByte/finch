@@ -4,6 +4,7 @@ import { PrismaService } from '../persistence/prisma.service';
 import { EmbeddingService } from './embedding.service';
 import { AuditLoggerService } from '../audit/audit-logger.service';
 import type { MemoryType, MemoryHit } from '@finch/types';
+import { finchMemoryQueryMs } from '../telemetry';
 
 export interface MemoryStagingRecord {
   stagingId: string;
@@ -34,6 +35,7 @@ export class MemoryConnectorService {
     types?: MemoryType[];
     minRelevanceScore?: number;
   }): Promise<MemoryHit[]> {
+    const queryStartMs = Date.now();
     const queryEmbedding = await this.embedding.embed(params.query);
     const embeddingLiteral = `[${queryEmbedding.join(',')}]`;
     const minScore = params.minRelevanceScore ?? 0.7;
@@ -93,6 +95,11 @@ export class MemoryConnectorService {
       score: Number(r.relevance_score),
       sourceRunId: r.source_run_id ?? undefined,
     }));
+
+    // W6-09: Record memory query duration metric
+    finchMemoryQueryMs.record(Date.now() - queryStartMs, {
+      harness_id: params.harnessId,
+    });
 
     this.logger.debug(`Memory query returned ${hits.length} hits for harness=${params.harnessId}`);
     return hits;

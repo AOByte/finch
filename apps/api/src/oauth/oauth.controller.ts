@@ -1,4 +1,5 @@
-import { Controller, Get, Param, Query, Res, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Param, Query, Res, HttpStatus, UseGuards } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import type { Response } from 'express';
 import { OAuthService } from './oauth.service';
 import { OAuthProviderRegistry } from './oauth-provider-registry';
@@ -9,6 +10,7 @@ import { OAuthProviderRegistry } from './oauth-provider-registry';
  * The callback endpoint lives in ConnectorSettingsModule as OAuthCallbackController.
  */
 @Controller('api/oauth')
+@UseGuards(JwtAuthGuard)
 export class OAuthController {
   constructor(
     private readonly oauthService: OAuthService,

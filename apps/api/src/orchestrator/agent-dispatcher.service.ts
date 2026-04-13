@@ -9,6 +9,7 @@ import { MemoryConnectorService } from '../memory/memory-connector.service';
 import { MCPRegistryService } from '../mcp/mcp-registry.service';
 import { GateEvent } from '../agents/gate-event';
 import { ForcedGateError } from '../agents/errors';
+import { finchPhaseDurationSeconds } from '../telemetry';
 import type {
   Phase,
   AgentStepConfig,
@@ -86,148 +87,158 @@ export class AgentDispatcherService {
       return input;
     }
 
+    const phaseStartTime = Date.now();
     let currentArtifact = input;
     let startPosition = 0;
 
-    // Gate resume path: restore from snapshot
-    if (resumeFromSnapshot) {
-      const snapshot = resumeFromSnapshot;
-      startPosition = snapshot.pipelinePosition;
+    try {
+      // Gate resume path: restore from snapshot
+      if (resumeFromSnapshot) {
+        const snapshot = resumeFromSnapshot;
+        startPosition = snapshot.pipelinePosition;
 
-      // Emit agent_skipped_on_resume for each skipped agent
-      for (let i = 0; i < startPosition; i++) {
-        if (i < agents.length) {
-          await this.auditLogger.log({
-            runId,
-            harnessId,
-            phase,
-            eventType: 'agent_skipped_on_resume',
-            actor: { agentId: agents[i].agentId },
-            payload: { skippedPosition: i, resumePosition: startPosition },
-          });
+        // Emit agent_skipped_on_resume for each skipped agent
+        for (let i = 0; i < startPosition; i++) {
+          if (i < agents.length) {
+            await this.auditLogger.log({
+              runId,
+              harnessId,
+              phase,
+              eventType: 'agent_skipped_on_resume',
+              actor: { agentId: agents[i].agentId },
+              payload: { skippedPosition: i, resumePosition: startPosition },
+            });
+          }
+        }
+
+        // Restore artifact from snapshot's agentOutputsBeforeGate
+        const outputs = snapshot.agentOutputsBeforeGate;
+        if (outputs.length > 0) {
+          const lastOutput = outputs[outputs.length - 1];
+          currentArtifact = lastOutput.artifact;
         }
       }
 
-      // Restore artifact from snapshot's agentOutputsBeforeGate
-      const outputs = snapshot.agentOutputsBeforeGate;
-      if (outputs.length > 0) {
-        const lastOutput = outputs[outputs.length - 1];
-        currentArtifact = lastOutput.artifact;
-      }
-    }
+      // Pipeline execution
+      for (let position = startPosition; position < agents.length; position++) {
+        const agentConfig = agents[position];
 
-    // Pipeline execution
-    for (let position = startPosition; position < agents.length; position++) {
-      const agentConfig = agents[position];
-
-      // FF-09: updatePipelinePosition BEFORE agent invocation
-      await this.runRepository.updatePipelinePosition(
-        runId,
-        phase,
-        position,
-        JSON.parse(JSON.stringify(currentArtifact ?? {})) as Prisma.InputJsonValue,
-      );
-
-      // Build agent context
-      const context: AgentContext = {
-        runId,
-        harnessId,
-        phase,
-        agentConfig,
-        source,
-        pipelinePosition: position,
-        temporalWorkflowId,
-      };
-
-      // Check hard rules before agent invocation
-      const hardResult = await this.ruleEnforcement.checkHardRules(
-        agentConfig.rules,
-        currentArtifact,
-      );
-      if (hardResult.violated) {
-        return new GateEvent({
-          phase,
+        // FF-09: updatePipelinePosition BEFORE agent invocation
+        await this.runRepository.updatePipelinePosition(
           runId,
-          harnessId,
-          gapDescription: `Hard rule violated: ${hardResult.rule?.constraint ?? 'unknown'}`,
-          question: hardResult.gateQuestion ?? 'How should we proceed?',
-          source,
-          agentId: agentConfig.agentId,
-          pipelinePosition: position,
-          temporalWorkflowId,
-        });
-      }
-
-      // Invoke agent
-      await this.auditLogger.log({
-        runId,
-        harnessId,
-        phase,
-        eventType: 'agent_invoked',
-        actor: { agentId: agentConfig.agentId },
-        payload: { position, model: agentConfig.model },
-      });
-
-      const runner = this.phaseRunners.get(phase);
-      if (!runner) {
-        throw new Error(`No phase runner registered for phase: ${phase}`);
-      }
-
-      const result = await runner(currentArtifact, context);
-
-      // Belt-and-suspenders: if an agent somehow returns a GateEvent in a
-      // gate-free phase (TRIGGER / SHIP), throw ForcedGateError (FC-01/FC-07).
-      if (result instanceof GateEvent &&
-          (phase === 'TRIGGER' || phase === 'SHIP')) {
-        throw new ForcedGateError(
-          `Agent returned GateEvent in gate-free phase ${phase} (FC-01/FC-07). ` +
-          `AgentId: ${result.agentId}, RunId: ${runId}.`,
-        );
-      }
-
-      // If agent fired a gate, build snapshot and return
-      if (result instanceof GateEvent) {
-        const snapshot = await this.buildSnapshot(
           phase,
           position,
-          currentArtifact,
-          runId,
-          agents,
-          params,
+          JSON.parse(JSON.stringify(currentArtifact ?? {})) as Prisma.InputJsonValue,
         );
-        result.snapshot = snapshot;
-        return result;
-      }
 
-      // Check soft rules after agent invocation
-      const softResult = await this.ruleEnforcement.checkSoftRules(
-        agentConfig.rules,
-        currentArtifact,
-      );
-      for (const deviation of softResult.deviations) {
+        // Build agent context
+        const context: AgentContext = {
+          runId,
+          harnessId,
+          phase,
+          agentConfig,
+          source,
+          pipelinePosition: position,
+          temporalWorkflowId,
+        };
+
+        // Check hard rules before agent invocation
+        const hardResult = await this.ruleEnforcement.checkHardRules(
+          agentConfig.rules,
+          currentArtifact,
+        );
+        if (hardResult.violated) {
+          return new GateEvent({
+            phase,
+            runId,
+            harnessId,
+            gapDescription: `Hard rule violated: ${hardResult.rule?.constraint ?? 'unknown'}`,
+            question: hardResult.gateQuestion ?? 'How should we proceed?',
+            source,
+            agentId: agentConfig.agentId,
+            pipelinePosition: position,
+            temporalWorkflowId,
+          });
+        }
+
+        // Invoke agent
         await this.auditLogger.log({
           runId,
           harnessId,
           phase,
-          eventType: 'rule_deviation',
+          eventType: 'agent_invoked',
           actor: { agentId: agentConfig.agentId },
-          payload: { rule: deviation.rule.constraint, reason: deviation.reason },
+          payload: { position, model: agentConfig.model },
         });
+
+        const runner = this.phaseRunners.get(phase);
+        if (!runner) {
+          throw new Error(`No phase runner registered for phase: ${phase}`);
+        }
+
+        const result = await runner(currentArtifact, context);
+
+        // Belt-and-suspenders: if an agent somehow returns a GateEvent in a
+        // gate-free phase (TRIGGER / SHIP), throw ForcedGateError (FC-01/FC-07).
+        if (result instanceof GateEvent &&
+            (phase === 'TRIGGER' || phase === 'SHIP')) {
+          throw new ForcedGateError(
+            `Agent returned GateEvent in gate-free phase ${phase} (FC-01/FC-07). ` +
+            `AgentId: ${result.agentId}, RunId: ${runId}.`,
+          );
+        }
+
+        // If agent fired a gate, build snapshot and return
+        if (result instanceof GateEvent) {
+          const snapshot = await this.buildSnapshot(
+            phase,
+            position,
+            currentArtifact,
+            runId,
+            agents,
+            params,
+          );
+          result.snapshot = snapshot;
+          return result;
+        }
+
+        // Check soft rules after agent invocation (against agent output, not input)
+        const softResult = await this.ruleEnforcement.checkSoftRules(
+          agentConfig.rules,
+          result,
+        );
+        for (const deviation of softResult.deviations) {
+          await this.auditLogger.log({
+            runId,
+            harnessId,
+            phase,
+            eventType: 'rule_deviation',
+            actor: { agentId: agentConfig.agentId },
+            payload: { rule: deviation.rule.constraint, reason: deviation.reason },
+          });
+        }
+
+        await this.auditLogger.log({
+          runId,
+          harnessId,
+          phase,
+          eventType: 'agent_completed',
+          actor: { agentId: agentConfig.agentId },
+          payload: { position },
+        });
+
+        currentArtifact = result;
       }
 
-      await this.auditLogger.log({
-        runId,
-        harnessId,
+      return currentArtifact;
+    } finally {
+      // W6-09: Always record phase duration, even on gate fire or error
+      const phaseDurationSec = (Date.now() - phaseStartTime) / 1000;
+      finchPhaseDurationSeconds.record(phaseDurationSec, {
         phase,
-        eventType: 'agent_completed',
-        actor: { agentId: agentConfig.agentId },
-        payload: { position },
+        harness_id: harnessId,
       });
-
-      currentArtifact = result;
     }
-
-    return currentArtifact;
   }
 
   private async buildSnapshot(

@@ -1,0 +1,19 @@
+.container {
+  padding: 16px;
+  background: #fff;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+}
+
+.title {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 12px;
+  color: #1f2937;
+}
+
+.empty {
+  text-align: center;
+  color: #9ca3af;
+  padding: 24px;
+}

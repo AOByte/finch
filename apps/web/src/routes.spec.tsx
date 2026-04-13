@@ -25,30 +25,30 @@ describe('routes', () => {
     expect(parent).toBe(routeTree);
   });
 
-  it('Index component should render "Finch"', () => {
+  it('Login component should render "Finch Login"', () => {
     const children = Object.values(routeTree.children!) as Array<{
       options?: { component?: React.ComponentType };
     }>;
-    const indexRoute = children[0];
-    const IndexComponent = indexRoute.options?.component;
-    expect(IndexComponent).toBeDefined();
+    const loginRoute = children[0];
+    const LoginComponent = loginRoute.options?.component;
+    expect(LoginComponent).toBeDefined();
 
-    const Component = IndexComponent as React.ComponentType;
+    const Component = LoginComponent as React.ComponentType;
     render(<Component />);
-    expect(screen.getByText('Finch')).toBeDefined();
+    expect(screen.getByText('Finch Login')).toBeDefined();
   });
 
-  it('Index component should render as an h1 element', () => {
+  it('Login component should render as an h1 element', () => {
     const children = Object.values(routeTree.children!) as Array<{
       options?: { component?: React.ComponentType };
     }>;
-    const indexRoute = children[0];
-    const IndexComponent = indexRoute.options?.component;
+    const loginRoute = children[0];
+    const LoginComponent = loginRoute.options?.component;
 
-    const Component = IndexComponent as React.ComponentType;
+    const Component = LoginComponent as React.ComponentType;
     const { container } = render(<Component />);
     const h1 = container.querySelector('h1');
     expect(h1).not.toBeNull();
-    expect(h1?.textContent).toBe('Finch');
+    expect(h1?.textContent).toBe('Finch Login');
   });
 });

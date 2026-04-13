@@ -1,0 +1,21 @@
+.editor { display: flex; flex-direction: column; gap: 16px; }
+.preambleSection { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; background: #f9fafb; }
+.preambleLabel { font-size: 12px; font-weight: 600; color: #6b7280; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px; }
+.preamble { background: #1f2937; color: #e5e7eb; padding: 12px; border-radius: 6px; font-size: 12px; overflow-x: auto; margin: 0; white-space: pre-wrap; }
+.agentCard { border: 1px solid #e5e7eb; border-radius: 8px; padding: 12px; }
+.agentHeader { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.agentId { font-weight: 600; font-size: 14px; }
+.position { font-size: 12px; color: #9ca3af; }
+.editBtn { margin-left: auto; padding: 4px 10px; background: #eff6ff; color: #2563eb; border: 1px solid #bfdbfe; border-radius: 4px; font-size: 12px; cursor: pointer; }
+.editForm { display: flex; flex-direction: column; gap: 8px; }
+.label { display: flex; flex-direction: column; gap: 4px; font-size: 13px; font-weight: 500; color: #374151; }
+.select { padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; }
+.promptTextarea { padding: 8px; border: 1px solid #d1d5db; border-radius: 4px; font-family: monospace; font-size: 13px; resize: vertical; }
+.error { color: #dc2626; font-size: 13px; margin: 0; }
+.actions { display: flex; gap: 8px; }
+.saveBtn { padding: 6px 14px; background: #2563eb; color: #fff; border: none; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.saveBtn:disabled { opacity: 0.5; }
+.cancelBtn { padding: 6px 14px; background: #f3f4f6; color: #374151; border: 1px solid #d1d5db; border-radius: 4px; font-size: 13px; cursor: pointer; }
+.agentInfo { display: flex; flex-direction: column; gap: 4px; }
+.model { font-size: 12px; color: #6b7280; }
+.prompt { font-size: 13px; color: #374151; margin: 0; }
