@@ -40,23 +40,23 @@ export class HarnessAuthGuard implements CanActivate {
     let resolvedHarnessId = harnessId;
     const uuidRegex = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
     if (!uuidRegex.test(harnessId)) {
-      const harness = await this.prisma.$queryRawUnsafe<Array<{ harness_id: string }>>(
-        `SELECT harness_id FROM harnesses WHERE name = $1`,
-        harnessId,
-      );
-      if (harness.length > 0) {
-        resolvedHarnessId = harness[0].harness_id;
+      const harness = await this.prisma.harness.findFirst({ where: { name: harnessId } });
+      if (harness) {
+        resolvedHarnessId = harness.harnessId;
       }
     }
 
     // Check membership
-    const membership = await this.prisma.$queryRawUnsafe<Array<{ user_id: string }>>(
-      `SELECT user_id FROM harness_members WHERE harness_id = $1::uuid AND user_id = $2::uuid`,
-      resolvedHarnessId,
-      user.userId,
-    );
+    const membership = await this.prisma.harnessMember.findUnique({
+      where: {
+        userId_harnessId: {
+          userId: user.userId,
+          harnessId: resolvedHarnessId,
+        },
+      },
+    });
 
-    if (membership.length === 0) {
+    if (!membership) {
       throw new ForbiddenException('You do not have access to this harness');
     }
 

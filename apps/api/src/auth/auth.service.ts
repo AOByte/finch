@@ -30,24 +30,18 @@ export class AuthService {
   ) {}
 
   async validateUser(email: string, password: string): Promise<{ userId: string; email: string }> {
-    const users = await this.prisma.$queryRawUnsafe<
-      Array<{ user_id: string; email: string; password_hash: string }>
-    >(
-      `SELECT user_id, email, password_hash FROM users WHERE email = $1`,
-      email,
-    );
+    const user = await this.prisma.user.findUnique({ where: { email } });
 
-    if (users.length === 0) {
+    if (!user) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    const user = users[0];
-    const isValid = await bcrypt.compare(password, user.password_hash);
+    const isValid = await bcrypt.compare(password, user.passwordHash);
     if (!isValid) {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    return { userId: user.user_id, email: user.email };
+    return { userId: user.userId, email: user.email };
   }
 
   generateAccessToken(payload: TokenPayload): string {
@@ -98,22 +92,15 @@ export class AuthService {
     await this.redis.del(key);
 
     // Look up user to get email for the new access token
-    const users = await this.prisma.$queryRawUnsafe<
-      Array<{ user_id: string; email: string }>
-    >(
-      `SELECT user_id, email FROM users WHERE user_id = $1::uuid`,
-      payload.userId,
-    );
+    const user = await this.prisma.user.findUnique({ where: { userId: payload.userId } });
 
-    if (users.length === 0) {
+    if (!user) {
       throw new UnauthorizedException('User not found');
     }
 
-    const user = users[0];
-
     // Generate new tokens
-    const accessToken = this.generateAccessToken({ userId: user.user_id, email: user.email });
-    const refreshToken = await this.generateRefreshToken(user.user_id);
+    const accessToken = this.generateAccessToken({ userId: user.userId, email: user.email });
+    const refreshToken = await this.generateRefreshToken(user.userId);
 
     return { accessToken, refreshToken };
   }

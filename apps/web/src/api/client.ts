@@ -33,11 +33,12 @@ export async function apiClient<T>(
     // Attempt token refresh (deduplicate concurrent refreshes)
     if (!isRefreshing) {
       isRefreshing = true;
-      refreshPromise = refreshTokens();
+      refreshPromise = refreshTokens().finally(() => {
+        isRefreshing = false;
+        refreshPromise = null;
+      });
     }
     const refreshed = await refreshPromise;
-    isRefreshing = false;
-    refreshPromise = null;
 
     if (refreshed) {
       // Retry the original request
