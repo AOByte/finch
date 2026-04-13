@@ -37,6 +37,8 @@ const mockPrisma = {
   $connect: vi.fn(),
   $disconnect: vi.fn(),
   run: { findUnique: vi.fn() },
+  mcpServer: { findMany: vi.fn().mockResolvedValue([]) },
+  oAuthState: { deleteMany: vi.fn().mockResolvedValue({ count: 0 }) },
 };
 
 beforeAll(() => {
