@@ -39,3 +39,13 @@ export const finchRuleViolationsTotal = meter.createCounter('finch_rule_violatio
 export const finchMemoryQueryMs = meter.createHistogram('finch_memory_query_ms', {
   description: 'Duration of memory queries in milliseconds',
 });
+
+// Seed initial zero values so Prometheus exports these metrics immediately.
+// Without at least one observation, the PrometheusExporter omits them entirely.
+if (!isTest) {
+  finchGateFiresTotal.add(0);
+  finchLlmTokensTotal.add(0);
+  finchPhaseDurationSeconds.record(0);
+  finchRuleViolationsTotal.add(0);
+  finchMemoryQueryMs.record(0);
+}

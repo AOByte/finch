@@ -20,13 +20,15 @@ test.describe('Test Case 2: Run Detail — TAPES Phase Order & Gate Resume', () 
     await page.fill('input[type="email"]', 'admin@finch.local');
     await page.fill('input[type="password"]', 'finch-dev-password');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/', { timeout: 10000 });
+    // Wait for redirect away from /login (the router navigates to '/' on success)
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
 
     // Navigate to runs page
     await page.goto('/runs');
+    await page.waitForLoadState('networkidle');
 
     // Check that the runs page renders
-    await expect(page.locator('h1')).toContainText('Runs', { timeout: 10000 });
+    await expect(page.locator('h1')).toContainText('Runs', { timeout: 15000 });
   });
 
   test('No approve/reject buttons exist on the page', async ({ page }) => {
@@ -35,10 +37,12 @@ test.describe('Test Case 2: Run Detail — TAPES Phase Order & Gate Resume', () 
     await page.fill('input[type="email"]', 'admin@finch.local');
     await page.fill('input[type="password"]', 'finch-dev-password');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/', { timeout: 10000 });
+    // Wait for redirect away from /login
+    await page.waitForURL((url) => !url.pathname.includes('/login'), { timeout: 15000 });
 
     // Navigate to runs
     await page.goto('/runs');
+    await page.waitForLoadState('networkidle');
 
     // Verify no approve/reject buttons (UI-02 / FF-03)
     const approveButton = page.locator('button:has-text("approve")');

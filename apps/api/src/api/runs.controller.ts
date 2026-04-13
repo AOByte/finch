@@ -14,6 +14,7 @@ import { RunRepository } from '../persistence/run.repository';
 import { RunManagerService } from '../orchestrator/run-manager.service';
 import { AuditRepository } from '../audit/audit.repository';
 import { GateRepository } from '../persistence/gate.repository';
+import { HarnessRepository } from '../persistence/harness.repository';
 
 @Controller('api/runs')
 @UseGuards(JwtAuthGuard)
@@ -23,6 +24,7 @@ export class RunsController {
     private readonly runManager: RunManagerService,
     private readonly auditRepository: AuditRepository,
     private readonly gateRepository: GateRepository,
+    private readonly harnessRepository: HarnessRepository,
   ) {}
 
   @Get()
@@ -36,10 +38,21 @@ export class RunsController {
       return { data: [], meta: { total: 0, hasMore: false } };
     }
 
+    // Resolve harness name to UUID when a non-UUID value is passed
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let resolvedId = harnessId;
+    if (!UUID_RE.test(harnessId)) {
+      const harness = await this.harnessRepository.findByName(harnessId);
+      if (!harness) {
+        return { data: [], meta: { total: 0, hasMore: false } };
+      }
+      resolvedId = harness.harnessId;
+    }
+
     const take = limit ? parseInt(limit, 10) : 20;
     const skip = offset ? parseInt(offset, 10) : 0;
 
-    const runs = await this.runRepository.findByHarnessId(harnessId, { skip, take });
+    const runs = await this.runRepository.findByHarnessId(resolvedId, { skip, take });
     const filtered = status ? runs.filter((r) => r.status === status) : runs;
 
     return {
