@@ -14,7 +14,7 @@ import { createHmac, timingSafeEqual } from 'crypto';
 
 @WebSocketGateway({
   namespace: '/runs',
-  // CORS origin is set dynamically in afterInit based on FRONTEND_URL config
+  cors: { origin: process.env.FRONTEND_URL || false },
 })
 export class RunGateway implements OnGatewayConnection, OnGatewayInit {
   private readonly logger = new Logger(RunGateway.name);
@@ -25,15 +25,6 @@ export class RunGateway implements OnGatewayConnection, OnGatewayInit {
   constructor(private readonly config: ConfigService) {}
 
   async afterInit(server: Server): Promise<void> {
-    // Set CORS origin from config — reject all if not configured
-    const frontendUrl = this.config.get<string>('FRONTEND_URL');
-    if (frontendUrl) {
-      server.engine.opts.cors = { origin: frontendUrl };
-    } else {
-      this.logger.warn('FRONTEND_URL not configured — WebSocket CORS will reject cross-origin requests');
-      server.engine.opts.cors = { origin: false };
-    }
-
     const redisUrl = this.config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
 
     try {

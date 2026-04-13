@@ -39,7 +39,7 @@ describe('TriggerController', () => {
     const result = await controller.trigger(
       'default',
       'sha256=abc',
-      { body: JSON.stringify({ rawText: 'fix it' }) } as never,
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'fix it' })) } as never,
       { rawText: 'fix it' },
     );
 
@@ -62,7 +62,7 @@ describe('TriggerController', () => {
     mockHarnessRepository.findByName.mockResolvedValue(null);
 
     await expect(
-      controller.trigger('default', 'sha256=abc', { body: '{}' } as never, { rawText: 'fix it' }),
+      controller.trigger('default', 'sha256=abc', { rawBody: Buffer.from('{}') } as never, { rawText: 'fix it' }),
     ).rejects.toThrow(NotFoundException);
   });
 
@@ -70,7 +70,7 @@ describe('TriggerController', () => {
     const result = await controller.trigger(
       'some-uuid',
       'sha256=abc',
-      { body: JSON.stringify({ rawText: 'do something' }) } as never,
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'do something' })) } as never,
       { rawText: 'do something' },
     );
 
@@ -85,7 +85,7 @@ describe('TriggerController', () => {
     const result = await controller.trigger(
       'h1',
       'sha256=abc',
-      { body: JSON.stringify({ rawText: 'task', runId: 'custom-run-id' }) } as never,
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'task', runId: 'custom-run-id' })) } as never,
       { rawText: 'task', runId: 'custom-run-id' },
     );
 
@@ -102,7 +102,7 @@ describe('TriggerController', () => {
     await controller.trigger(
       'default',
       'sha256=abc',
-      { body: JSON.stringify({ rawText: 'fix payments' }) } as never,
+      { rawBody: Buffer.from(JSON.stringify({ rawText: 'fix payments' })) } as never,
       { rawText: 'fix payments' },
     );
 

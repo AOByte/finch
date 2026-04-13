@@ -55,24 +55,10 @@ describe('RunGateway', () => {
 
   describe('afterInit', () => {
     it('sets up Redis adapter', async () => {
-      const gw = makeGateway({ FRONTEND_URL: 'http://localhost:3000' });
-      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
+      const gw = makeGateway();
+      const mockServer = { adapter: vi.fn() } as unknown as Server;
       await gw.afterInit(mockServer);
       expect(mockServer.adapter).toHaveBeenCalled();
-    });
-
-    it('sets CORS origin from FRONTEND_URL config', async () => {
-      const gw = makeGateway({ FRONTEND_URL: 'https://app.example.com' });
-      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
-      await gw.afterInit(mockServer);
-      expect((mockServer as any).engine.opts.cors.origin).toBe('https://app.example.com');
-    });
-
-    it('rejects cross-origin when FRONTEND_URL not configured', async () => {
-      const gw = makeGateway({ FRONTEND_URL: undefined });
-      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
-      await gw.afterInit(mockServer);
-      expect((mockServer as any).engine.opts.cors.origin).toBe(false);
     });
 
     it('handles Redis adapter setup failure gracefully', async () => {
@@ -84,8 +70,8 @@ describe('RunGateway', () => {
         }),
       } as never);
 
-      const gw = makeGateway({ FRONTEND_URL: 'http://localhost:3000' });
-      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
+      const gw = makeGateway();
+      const mockServer = { adapter: vi.fn() } as unknown as Server;
       // Should not throw
       await gw.afterInit(mockServer);
       expect(mockServer.adapter).not.toHaveBeenCalled();

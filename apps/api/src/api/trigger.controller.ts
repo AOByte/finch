@@ -15,6 +15,7 @@ import { RunRepository } from '../persistence/run.repository';
 import { HarnessRepository } from '../persistence/harness.repository';
 import { WebhookConnectorService } from '../connectors/webhook-connector.service';
 import type { RawTriggerInput } from '../workflow/types';
+import type { RawBodyRequest } from '@nestjs/common';
 import type { Request } from 'express';
 
 @Controller('api/trigger')
@@ -31,11 +32,11 @@ export class TriggerController {
   async trigger(
     @Param('harnessId') harnessIdOrName: string,
     @Headers('x-finch-signature') signature: string | undefined,
-    @Req() req: Request,
+    @Req() req: RawBodyRequest<Request>,
     @Body() body: { rawText: string; harnessId?: string; runId?: string },
   ) {
-    // Validate HMAC-SHA256 signature (PRD TR-03)
-    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    // Validate HMAC-SHA256 signature using the original raw bytes (PRD TR-03)
+    const rawBody = req.rawBody?.toString() ?? JSON.stringify(req.body);
     this.webhookConnector.validateSignature(rawBody, signature);
     // Resolve harness — accept either UUID or name
     let harnessId = harnessIdOrName;
