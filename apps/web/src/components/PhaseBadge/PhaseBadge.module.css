@@ -1,0 +1,49 @@
+.badge {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 6px;
+  border-left: 4px solid #e5e7eb;
+}
+
+.name {
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.status {
+  font-size: 12px;
+  opacity: 0.7;
+  text-transform: capitalize;
+}
+
+.duration {
+  font-size: 12px;
+  opacity: 0.6;
+  margin-left: auto;
+}
+
+.not_started {
+  border-left-color: #d1d5db;
+  background: #f9fafb;
+  color: #6b7280;
+}
+
+.in_progress {
+  border-left-color: #3b82f6;
+  background: #eff6ff;
+  color: #1d4ed8;
+}
+
+.completed {
+  border-left-color: #10b981;
+  background: #ecfdf5;
+  color: #065f46;
+}
+
+.failed {
+  border-left-color: #ef4444;
+  background: #fef2f2;
+  color: #991b1b;
+}

@@ -7,13 +7,16 @@ import {
   NotFoundException,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RunRepository } from '../persistence/run.repository';
 import { RunManagerService } from '../orchestrator/run-manager.service';
 import { AuditRepository } from '../audit/audit.repository';
 import { GateRepository } from '../persistence/gate.repository';
 
 @Controller('api/runs')
+@UseGuards(JwtAuthGuard)
 export class RunsController {
   constructor(
     private readonly runRepository: RunRepository,

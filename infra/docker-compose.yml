@@ -52,5 +52,21 @@ services:
     depends_on:
       - finch-temporal
 
+  finch-grafana:
+    image: grafana/grafana:11.1.0
+    container_name: finch-grafana
+    environment:
+      GF_SECURITY_ADMIN_USER: admin
+      GF_SECURITY_ADMIN_PASSWORD: finch
+      GF_AUTH_ANONYMOUS_ENABLED: 'true'
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+    ports:
+      - '3030:3000'
+    volumes:
+      - ./grafana/provisioning:/etc/grafana/provisioning
+      - ./grafana/dashboards:/var/lib/grafana/dashboards
+    extra_hosts:
+      - 'host.docker.internal:host-gateway'
+
 volumes:
   finch_postgres_data:

@@ -9,6 +9,7 @@ import { MemoryConnectorService } from '../memory/memory-connector.service';
 import { MCPRegistryService } from '../mcp/mcp-registry.service';
 import { GateEvent } from '../agents/gate-event';
 import { ForcedGateError } from '../agents/errors';
+import { finchPhaseDurationSeconds } from '../telemetry';
 import type {
   Phase,
   AgentStepConfig,
@@ -86,6 +87,7 @@ export class AgentDispatcherService {
       return input;
     }
 
+    const phaseStartTime = Date.now();
     let currentArtifact = input;
     let startPosition = 0;
 
@@ -226,6 +228,13 @@ export class AgentDispatcherService {
 
       currentArtifact = result;
     }
+
+    // W6-09: Record phase duration metric
+    const phaseDurationSec = (Date.now() - phaseStartTime) / 1000;
+    finchPhaseDurationSeconds.record(phaseDurationSec, {
+      phase,
+      harness_id: harnessId,
+    });
 
     return currentArtifact;
   }

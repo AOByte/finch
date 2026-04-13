@@ -9,10 +9,14 @@ import {
   Body,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
+import { LockedPreambleGuard } from '../auth/guards/locked-preamble.guard';
 import { PrismaService } from '../persistence/prisma.service';
 
 @Controller('api/agents')
+@UseGuards(JwtAuthGuard)
 export class AgentsController {
   constructor(private readonly prisma: PrismaService) {}
 
@@ -77,6 +81,7 @@ export class AgentsController {
   }
 
   @Patch(':agentConfigId')
+  @UseGuards(LockedPreambleGuard)
   async update(
     @Param('agentConfigId') agentConfigId: string,
     @Body() body: {

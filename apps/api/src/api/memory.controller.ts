@@ -9,12 +9,15 @@ import {
   Body,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../persistence/prisma.service';
 import { MemoryConnectorService } from '../memory/memory-connector.service';
 import type { MemoryType } from '@finch/types';
 
 @Controller('api/memory')
+@UseGuards(JwtAuthGuard)
 export class MemoryController {
   constructor(
     private readonly prisma: PrismaService,
