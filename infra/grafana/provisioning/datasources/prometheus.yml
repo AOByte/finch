@@ -3,6 +3,6 @@ datasources:
   - name: Prometheus
     type: prometheus
     access: proxy
-    url: http://host.docker.internal:9464
+    url: http://finch-prometheus:9090
     isDefault: true
     editable: false

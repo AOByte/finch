@@ -81,15 +81,12 @@ export class AuthService {
       throw new UnauthorizedException('Invalid token type');
     }
 
-    // Check that the old token exists in Redis (not already revoked)
+    // Atomically delete the old token — if del returns 0, it was already consumed
     const key = `refresh:${payload.userId}:${payload.tokenId}`;
-    const exists = await this.redis.exists(key);
-    if (!exists) {
+    const deleted = await this.redis.del(key);
+    if (deleted === 0) {
       throw new UnauthorizedException('Refresh token revoked or expired');
     }
-
-    // Delete the old token
-    await this.redis.del(key);
 
     // Look up user to get email for the new access token
     const user = await this.prisma.user.findUnique({ where: { userId: payload.userId } });
