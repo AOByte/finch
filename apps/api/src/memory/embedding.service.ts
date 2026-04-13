@@ -1,4 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import OpenAI from 'openai';
 
 @Injectable()
@@ -6,10 +7,12 @@ export class EmbeddingService {
   private readonly logger = new Logger(EmbeddingService.name);
   private readonly client: OpenAI;
 
-  constructor() {
-    this.client = new OpenAI({
-      apiKey: process.env.OPENAI_API_KEY ?? 'missing-key',
-    });
+  constructor(private readonly config: ConfigService) {
+    const apiKey = this.config.get<string>('OPENAI_API_KEY');
+    if (!apiKey) {
+      throw new Error('OPENAI_API_KEY must be configured for embedding service');
+    }
+    this.client = new OpenAI({ apiKey });
   }
 
   async embed(text: string): Promise<number[]> {

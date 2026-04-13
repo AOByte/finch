@@ -1,7 +1,16 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { ConfigService } from '@nestjs/config';
+import { createHmac } from 'crypto';
 import { RunGateway } from '../../src/websocket/run.gateway';
 import { Server, Socket } from 'socket.io';
+
+/** Build a valid HS256-signed JWT for testing */
+function signJwt(payload: Record<string, unknown>, secret: string): string {
+  const header = Buffer.from(JSON.stringify({ alg: 'HS256', typ: 'JWT' })).toString('base64url');
+  const body = Buffer.from(JSON.stringify(payload)).toString('base64url');
+  const signature = createHmac('sha256', secret).update(`${header}.${body}`).digest('base64url');
+  return `${header}.${body}.${signature}`;
+}
 
 vi.mock('redis', () => ({
   createClient: vi.fn().mockReturnValue({
@@ -46,10 +55,24 @@ describe('RunGateway', () => {
 
   describe('afterInit', () => {
     it('sets up Redis adapter', async () => {
-      const gw = makeGateway();
-      const mockServer = { adapter: vi.fn() } as unknown as Server;
+      const gw = makeGateway({ FRONTEND_URL: 'http://localhost:3000' });
+      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
       await gw.afterInit(mockServer);
       expect(mockServer.adapter).toHaveBeenCalled();
+    });
+
+    it('sets CORS origin from FRONTEND_URL config', async () => {
+      const gw = makeGateway({ FRONTEND_URL: 'https://app.example.com' });
+      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
+      await gw.afterInit(mockServer);
+      expect((mockServer as any).engine.opts.cors.origin).toBe('https://app.example.com');
+    });
+
+    it('rejects cross-origin when FRONTEND_URL not configured', async () => {
+      const gw = makeGateway({ FRONTEND_URL: undefined });
+      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
+      await gw.afterInit(mockServer);
+      expect((mockServer as any).engine.opts.cors.origin).toBe(false);
     });
 
     it('handles Redis adapter setup failure gracefully', async () => {
@@ -61,8 +84,8 @@ describe('RunGateway', () => {
         }),
       } as never);
 
-      const gw = makeGateway();
-      const mockServer = { adapter: vi.fn() } as unknown as Server;
+      const gw = makeGateway({ FRONTEND_URL: 'http://localhost:3000' });
+      const mockServer = { adapter: vi.fn(), engine: { opts: { cors: {} } } } as unknown as Server;
       // Should not throw
       await gw.afterInit(mockServer);
       expect(mockServer.adapter).not.toHaveBeenCalled();
@@ -70,11 +93,11 @@ describe('RunGateway', () => {
   });
 
   describe('handleConnection', () => {
-    it('allows connection without JWT_SECRET (dev mode)', async () => {
+    it('disconnects when JWT_SECRET is not configured', async () => {
       const gw = makeGateway({ JWT_SECRET: undefined });
       const socket = makeSocket();
       await gw.handleConnection(socket);
-      expect(socket.disconnect).not.toHaveBeenCalled();
+      expect(socket.disconnect).toHaveBeenCalled();
     });
 
     it('disconnects client without token when JWT_SECRET is set', async () => {
@@ -95,8 +118,7 @@ describe('RunGateway', () => {
 
     it('disconnects client with expired JWT', async () => {
       const gw = makeGateway({ JWT_SECRET: 'secret123' });
-      const payload = { userId: 'u1', exp: Math.floor(Date.now() / 1000) - 3600 };
-      const token = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
+      const token = signJwt({ userId: 'u1', exp: Math.floor(Date.now() / 1000) - 3600 }, 'secret123');
       const socket = makeSocket({
         handshake: { auth: { token } } as never,
       });
@@ -104,10 +126,19 @@ describe('RunGateway', () => {
       expect(socket.disconnect).toHaveBeenCalled();
     });
 
-    it('authenticates client with valid JWT', async () => {
+    it('disconnects client with forged JWT signature', async () => {
       const gw = makeGateway({ JWT_SECRET: 'secret123' });
-      const payload = { userId: 'u1', exp: Math.floor(Date.now() / 1000) + 3600 };
-      const token = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
+      const token = signJwt({ userId: 'u1', exp: Math.floor(Date.now() / 1000) + 3600 }, 'wrong-secret');
+      const socket = makeSocket({
+        handshake: { auth: { token } } as never,
+      });
+      await gw.handleConnection(socket);
+      expect(socket.disconnect).toHaveBeenCalled();
+    });
+
+    it('authenticates client with valid signed JWT', async () => {
+      const gw = makeGateway({ JWT_SECRET: 'secret123' });
+      const token = signJwt({ userId: 'u1', exp: Math.floor(Date.now() / 1000) + 3600 }, 'secret123');
       const socket = makeSocket({
         handshake: { auth: { token } } as never,
       });
@@ -116,10 +147,9 @@ describe('RunGateway', () => {
       expect(socket.data.userId).toBe('u1');
     });
 
-    it('authenticates client with non-expiring JWT', async () => {
+    it('authenticates client with non-expiring signed JWT', async () => {
       const gw = makeGateway({ JWT_SECRET: 'secret123' });
-      const payload = { userId: 'u1' };
-      const token = `header.${Buffer.from(JSON.stringify(payload)).toString('base64url')}.signature`;
+      const token = signJwt({ userId: 'u1' }, 'secret123');
       const socket = makeSocket({
         handshake: { auth: { token } } as never,
       });
@@ -129,12 +159,22 @@ describe('RunGateway', () => {
   });
 
   describe('handleJoinHarness', () => {
-    it('joins client to harness room', () => {
+    it('joins authenticated client to harness room', () => {
       const gw = makeGateway();
       const socket = makeSocket();
+      socket.data.userId = 'u1';
       const result = gw.handleJoinHarness(socket, 'harness-1');
       expect(socket.join).toHaveBeenCalledWith('harness:harness-1');
       expect(result).toEqual({ joined: true });
+    });
+
+    it('rejects unauthenticated client', () => {
+      const gw = makeGateway();
+      const socket = makeSocket();
+      socket.emit = vi.fn();
+      const result = gw.handleJoinHarness(socket, 'harness-1');
+      expect(result).toEqual({ error: 'Unauthorized' });
+      expect(socket.disconnect).toHaveBeenCalled();
     });
 
     it('rejects empty harnessId', () => {

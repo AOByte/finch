@@ -10,10 +10,11 @@ import { ConfigService } from '@nestjs/config';
 import { Server, Socket } from 'socket.io';
 import { createAdapter } from '@socket.io/redis-adapter';
 import { createClient } from 'redis';
+import { createHmac, timingSafeEqual } from 'crypto';
 
 @WebSocketGateway({
   namespace: '/runs',
-  cors: { origin: '*' },
+  // CORS origin is set dynamically in afterInit based on FRONTEND_URL config
 })
 export class RunGateway implements OnGatewayConnection, OnGatewayInit {
   private readonly logger = new Logger(RunGateway.name);
@@ -24,6 +25,15 @@ export class RunGateway implements OnGatewayConnection, OnGatewayInit {
   constructor(private readonly config: ConfigService) {}
 
   async afterInit(server: Server): Promise<void> {
+    // Set CORS origin from config — reject all if not configured
+    const frontendUrl = this.config.get<string>('FRONTEND_URL');
+    if (frontendUrl) {
+      server.engine.opts.cors = { origin: frontendUrl };
+    } else {
+      this.logger.warn('FRONTEND_URL not configured — WebSocket CORS will reject cross-origin requests');
+      server.engine.opts.cors = { origin: false };
+    }
+
     const redisUrl = this.config.get<string>('REDIS_URL') ?? 'redis://localhost:6379';
 
     try {
@@ -44,8 +54,8 @@ export class RunGateway implements OnGatewayConnection, OnGatewayInit {
     const jwtSecret = this.config.get<string>('JWT_SECRET');
 
     if (!jwtSecret) {
-      // No JWT secret configured — allow all connections (dev mode)
-      this.logger.debug(`Client connected without auth: ${client.id}`);
+      this.logger.warn(`Client ${client.id} disconnected — JWT_SECRET not configured`);
+      client.disconnect();
       return;
     }
 
@@ -56,14 +66,7 @@ export class RunGateway implements OnGatewayConnection, OnGatewayInit {
     }
 
     try {
-      // Simple JWT verification (HS256)
-      const parts = token.split('.');
-      if (parts.length !== 3) throw new Error('Invalid JWT format');
-
-      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8')) as {
-        userId?: string;
-        exp?: number;
-      };
+      const payload = this.verifyJwt(token, jwtSecret);
 
       // Check expiration
       if (payload.exp && payload.exp * 1000 < Date.now()) {
@@ -78,10 +81,49 @@ export class RunGateway implements OnGatewayConnection, OnGatewayInit {
     }
   }
 
+  /**
+   * Verify JWT signature using HMAC-SHA256.
+   * Throws if the token is malformed or the signature does not match.
+   */
+  private verifyJwt(token: string, secret: string): { userId?: string; exp?: number } {
+    const parts = token.split('.');
+    if (parts.length !== 3) throw new Error('Invalid JWT format');
+
+    const [header, payloadB64, signatureB64] = parts;
+
+    // Verify HMAC-SHA256 signature
+    const signingInput = `${header}.${payloadB64}`;
+    const expectedSig = createHmac('sha256', secret)
+      .update(signingInput)
+      .digest('base64url');
+
+    // Timing-safe comparison to prevent timing attacks
+    const sigBuffer = Buffer.from(signatureB64);
+    const expectedBuffer = Buffer.from(expectedSig);
+
+    if (sigBuffer.length !== expectedBuffer.length || !timingSafeEqual(sigBuffer, expectedBuffer)) {
+      throw new Error('Invalid JWT signature');
+    }
+
+    const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8')) as {
+      userId?: string;
+      exp?: number;
+    };
+
+    return payload;
+  }
+
   @SubscribeMessage('join_harness')
   handleJoinHarness(client: Socket, harnessId: string): { joined: boolean } | { error: string } {
     if (!harnessId || typeof harnessId !== 'string') {
       return { error: 'Invalid harnessId' };
+    }
+
+    // Require authentication before joining a harness room
+    if (!client.data.userId) {
+      client.emit('error', { message: 'Authentication required to join harness' });
+      client.disconnect();
+      return { error: 'Unauthorized' };
     }
 
     client.join(`harness:${harnessId}`);

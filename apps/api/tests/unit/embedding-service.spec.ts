@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { ConfigService } from '@nestjs/config';
 import { EmbeddingService } from '../../src/memory/embedding.service';
 
 // Mock the OpenAI module with a real class constructor
@@ -17,7 +18,13 @@ describe('EmbeddingService', () => {
   let service: EmbeddingService;
 
   beforeEach(() => {
-    service = new EmbeddingService();
+    const config = new ConfigService({ OPENAI_API_KEY: 'test-key' });
+    service = new EmbeddingService(config);
+  });
+
+  it('throws when OPENAI_API_KEY is not configured', () => {
+    const config = new ConfigService({});
+    expect(() => new EmbeddingService(config)).toThrow('OPENAI_API_KEY must be configured');
   });
 
   it('embed returns a 1536-element number[]', async () => {

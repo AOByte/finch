@@ -3,6 +3,8 @@ import {
   Post,
   Param,
   Body,
+  Headers,
+  Req,
   HttpCode,
   HttpStatus,
   NotFoundException,
@@ -11,7 +13,9 @@ import { WorkflowClient } from '@temporalio/client';
 import { v4 as uuidv4 } from 'uuid';
 import { RunRepository } from '../persistence/run.repository';
 import { HarnessRepository } from '../persistence/harness.repository';
+import { WebhookConnectorService } from '../connectors/webhook-connector.service';
 import type { RawTriggerInput } from '../workflow/types';
+import type { Request } from 'express';
 
 @Controller('api/trigger')
 export class TriggerController {
@@ -19,14 +23,20 @@ export class TriggerController {
     private readonly runRepository: RunRepository,
     private readonly harnessRepository: HarnessRepository,
     private readonly workflowClient: WorkflowClient,
+    private readonly webhookConnector: WebhookConnectorService,
   ) {}
 
   @Post(':harnessId')
   @HttpCode(HttpStatus.CREATED)
   async trigger(
     @Param('harnessId') harnessIdOrName: string,
+    @Headers('x-finch-signature') signature: string | undefined,
+    @Req() req: Request,
     @Body() body: { rawText: string; harnessId?: string; runId?: string },
   ) {
+    // Validate HMAC-SHA256 signature (PRD TR-03)
+    const rawBody = typeof req.body === 'string' ? req.body : JSON.stringify(req.body);
+    this.webhookConnector.validateSignature(rawBody, signature);
     // Resolve harness — accept either UUID or name
     let harnessId = harnessIdOrName;
     if (harnessIdOrName === 'default') {
