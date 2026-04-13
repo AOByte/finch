@@ -130,6 +130,16 @@ jobs:
           --health-interval 10s
           --health-timeout 5s
           --health-retries 5
+      temporal:
+        image: temporalio/auto-setup:1.24
+        env:
+          DB: postgres12
+          DB_PORT: 5432
+          POSTGRES_USER: finch
+          POSTGRES_PWD: finch
+          POSTGRES_SEEDS: postgres
+        ports:
+          - 7233:7233
     steps:
       - uses: actions/checkout@v4
       - uses: pnpm/action-setup@v4
@@ -146,11 +156,22 @@ jobs:
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
       - run: npx playwright install chromium --with-deps
+      - name: Wait for Temporal to be ready
+        run: |
+          echo "Waiting for Temporal..."
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:7233/api/v1/namespaces > /dev/null 2>&1; then
+              echo "Temporal is up!"
+              break
+            fi
+            sleep 3
+          done
       - name: Start API server
         run: pnpm --filter api dev &
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
           REDIS_URL: redis://localhost:6379
+          TEMPORAL_ADDRESS: localhost:7233
           JWT_SECRET: e2e-test-secret
           ANTHROPIC_API_KEY: sk-test-placeholder
           OPENAI_API_KEY: sk-test-placeholder
@@ -159,12 +180,12 @@ jobs:
       - name: Wait for servers to be ready
         run: |
           echo "Waiting for API..."
-          for i in $(seq 1 30); do
+          for i in $(seq 1 60); do
             if curl -sf http://localhost:3001/health > /dev/null 2>&1; then
               echo "API is up!"
               break
             fi
-            sleep 2
+            sleep 3
           done
           echo "Waiting for frontend..."
           for i in $(seq 1 30); do
