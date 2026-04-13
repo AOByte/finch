@@ -100,7 +100,17 @@ export async function checkAuth(): Promise<boolean> {
     const res = await fetch(`${API_BASE}/api/harnesses`, {
       credentials: 'include',
     });
-    return res.ok;
+    if (res.ok) return true;
+    if (res.status === 401) {
+      // Attempt token refresh before giving up
+      const refreshed = await refreshTokens();
+      if (!refreshed) return false;
+      const retryRes = await fetch(`${API_BASE}/api/harnesses`, {
+        credentials: 'include',
+      });
+      return retryRes.ok;
+    }
+    return false;
   } catch {
     return false;
   }

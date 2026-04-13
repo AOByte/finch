@@ -106,6 +106,12 @@ export class AuthService {
   }
 
   async revokeAllRefreshTokens(userId: string): Promise<void> {
+    // Validate userId is a UUID to prevent Redis KEYS pattern injection
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    if (!UUID_RE.test(userId)) {
+      this.logger.warn(`Rejected revokeAllRefreshTokens with invalid userId: ${userId}`);
+      return;
+    }
     const pattern = `refresh:${userId}:*`;
     const keys = await this.redis.keys(pattern);
     if (keys.length > 0) {
