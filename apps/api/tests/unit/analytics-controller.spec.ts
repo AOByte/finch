@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { AnalyticsController } from '../../src/api/analytics.controller';
 import { AnalyticsService } from '../../src/api/analytics.service';
+import { HarnessRepository } from '../../src/persistence/harness.repository';
 
 describe('AnalyticsController', () => {
   let controller: AnalyticsController;
@@ -11,6 +12,8 @@ describe('AnalyticsController', () => {
     getCompletionRate: ReturnType<typeof vi.fn>;
     getLlmCostByAgent: ReturnType<typeof vi.fn>;
   };
+  let harnessRepo: { findByName: ReturnType<typeof vi.fn> };
+  const H1 = '00000000-0000-0000-0000-000000000001';
 
   beforeEach(() => {
     analyticsService = {
@@ -20,11 +23,15 @@ describe('AnalyticsController', () => {
       getCompletionRate: vi.fn().mockResolvedValue({ total: 10, completed: 8, failed: 1, stopped: 1, rate: 0.8 }),
       getLlmCostByAgent: vi.fn().mockResolvedValue([{ agentId: 'acquire-default', totalInputTokens: 5000, totalOutputTokens: 1000, callCount: 10 }]),
     };
-    controller = new AnalyticsController(analyticsService as unknown as AnalyticsService);
+    harnessRepo = { findByName: vi.fn() };
+    controller = new AnalyticsController(
+      analyticsService as unknown as AnalyticsService,
+      harnessRepo as unknown as HarnessRepository,
+    );
   });
 
   it('getAnalytics returns { data } envelope with all 5 aggregation sections', async () => {
-    const result = await controller.getAnalytics('h1');
+    const result = await controller.getAnalytics(H1);
     expect(result).toHaveProperty('data');
     expect(result.data).toHaveProperty('gateFrequencyByPhase');
     expect(result.data).toHaveProperty('gateFrequencyTrend');
@@ -34,11 +41,11 @@ describe('AnalyticsController', () => {
   });
 
   it('getAnalytics calls all 5 aggregation methods', async () => {
-    await controller.getAnalytics('h1');
-    expect(analyticsService.getGateFrequencyByPhase).toHaveBeenCalledWith('h1');
-    expect(analyticsService.getGateFrequencyTrend).toHaveBeenCalledWith('h1');
-    expect(analyticsService.getAvgGateResolutionTime).toHaveBeenCalledWith('h1');
-    expect(analyticsService.getCompletionRate).toHaveBeenCalledWith('h1');
-    expect(analyticsService.getLlmCostByAgent).toHaveBeenCalledWith('h1');
+    await controller.getAnalytics(H1);
+    expect(analyticsService.getGateFrequencyByPhase).toHaveBeenCalledWith(H1);
+    expect(analyticsService.getGateFrequencyTrend).toHaveBeenCalledWith(H1);
+    expect(analyticsService.getAvgGateResolutionTime).toHaveBeenCalledWith(H1);
+    expect(analyticsService.getCompletionRate).toHaveBeenCalledWith(H1);
+    expect(analyticsService.getLlmCostByAgent).toHaveBeenCalledWith(H1);
   });
 });

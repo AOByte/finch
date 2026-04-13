@@ -1,0 +1,1 @@
+export { GateFrequencyChart } from './GateFrequencyChart';

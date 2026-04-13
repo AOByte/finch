@@ -9,6 +9,7 @@ import { LLMRegistryService } from '../llm/llm-registry.service';
 import { GateEvent } from '../agents/gate-event';
 import type { GateResolution } from '../workflow/types';
 import type { Phase, TriggerConnector } from '@finch/types';
+import { finchGateFiresTotal } from '../telemetry';
 
 @Injectable()
 export class GateControllerService {
@@ -28,6 +29,13 @@ export class GateControllerService {
   }
 
   async dispatch(gateEvent: GateEvent): Promise<void> {
+    // W6-09: Record gate fire metric
+    finchGateFiresTotal.add(1, {
+      phase: gateEvent.phase,
+      trigger_type: gateEvent.source?.type ?? 'unknown',
+      harness_id: gateEvent.harnessId,
+    });
+
     // gate_fired is CRITICAL — synchronous write BEFORE anything else
     await this.auditLogger.log({
       runId: gateEvent.runId,

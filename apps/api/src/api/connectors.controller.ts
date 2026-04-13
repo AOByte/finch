@@ -9,12 +9,19 @@ import {
   Body,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../persistence/prisma.service';
+import { HarnessRepository } from '../persistence/harness.repository';
 
 @Controller('api/connectors')
+@UseGuards(JwtAuthGuard)
 export class ConnectorsController {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly harnessRepository: HarnessRepository,
+  ) {}
 
   @Get()
   async list(
@@ -24,7 +31,19 @@ export class ConnectorsController {
     if (!harnessId) {
       return { data: [], meta: { total: 0 } };
     }
-    const where: Record<string, unknown> = { harnessId };
+
+    // Resolve harness name to UUID when a non-UUID value is passed
+    const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+    let resolvedHarnessId = harnessId;
+    if (!UUID_RE.test(harnessId)) {
+      const harness = await this.harnessRepository.findByName(harnessId);
+      if (!harness) {
+        return { data: [], meta: { total: 0 } };
+      }
+      resolvedHarnessId = harness.harnessId;
+    }
+
+    const where: Record<string, unknown> = { harnessId: resolvedHarnessId };
     if (category) where['category'] = category;
 
     const connectors = await this.prisma.connector.findMany({ where });

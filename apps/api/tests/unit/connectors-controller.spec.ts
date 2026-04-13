@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { ConnectorsController } from '../../src/api/connectors.controller';
 import { PrismaService } from '../../src/persistence/prisma.service';
+import { HarnessRepository } from '../../src/persistence/harness.repository';
 
 describe('ConnectorsController', () => {
   let controller: ConnectorsController;
@@ -14,6 +15,8 @@ describe('ConnectorsController', () => {
       delete: ReturnType<typeof vi.fn>;
     };
   };
+  let harnessRepo: { findByName: ReturnType<typeof vi.fn> };
+  const H1 = '00000000-0000-0000-0000-000000000001';
 
   beforeEach(() => {
     prisma = {
@@ -25,13 +28,17 @@ describe('ConnectorsController', () => {
         delete: vi.fn(),
       },
     };
-    controller = new ConnectorsController(prisma as unknown as PrismaService);
+    harnessRepo = { findByName: vi.fn() };
+    controller = new ConnectorsController(
+      prisma as unknown as PrismaService,
+      harnessRepo as unknown as HarnessRepository,
+    );
   });
 
   it('list returns { data, meta } envelope', async () => {
     const connectors = [{ connectorId: 'c1' }];
     prisma.connector.findMany.mockResolvedValue(connectors);
-    const result = await controller.list('h1');
+    const result = await controller.list(H1);
     expect(result).toEqual({ data: connectors, meta: { total: 1 } });
   });
 
@@ -95,7 +102,7 @@ describe('ConnectorsController', () => {
 
   it('list filters by category when provided', async () => {
     prisma.connector.findMany.mockResolvedValue([]);
-    await controller.list('h1', 'acquire');
-    expect(prisma.connector.findMany).toHaveBeenCalledWith({ where: { harnessId: 'h1', category: 'acquire' } });
+    await controller.list(H1, 'acquire');
+    expect(prisma.connector.findMany).toHaveBeenCalledWith({ where: { harnessId: H1, category: 'acquire' } });
   });
 });

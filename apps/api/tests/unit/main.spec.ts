@@ -5,12 +5,16 @@ vi.mock('reflect-metadata', () => ({}));
 
 const mockListen = vi.fn().mockResolvedValue(undefined);
 const mockUseLogger = vi.fn();
+const mockUse = vi.fn();
+const mockEnableCors = vi.fn();
 const mockGet = vi.fn().mockReturnValue('mock-logger');
 
 vi.mock('@nestjs/core', () => ({
   NestFactory: {
     create: vi.fn().mockResolvedValue({
       useLogger: mockUseLogger,
+      use: mockUse,
+      enableCors: mockEnableCors,
       get: mockGet,
       listen: mockListen,
     }),
@@ -19,6 +23,10 @@ vi.mock('@nestjs/core', () => ({
 
 vi.mock('nestjs-pino', () => ({
   Logger: class MockLogger {},
+}));
+
+vi.mock('cookie-parser', () => ({
+  default: vi.fn().mockReturnValue('cookie-parser-middleware'),
 }));
 
 vi.mock('../../src/app.module', () => ({

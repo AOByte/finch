@@ -9,6 +9,7 @@ import type {
 } from '@finch/types';
 import { GateEvent } from './gate-event';
 import type { MCPRegistryService } from '../mcp/mcp-registry.service';
+import { finchLlmTokensTotal } from '../telemetry';
 
 export interface AgentLoopParams {
   llm: LLMConnector;
@@ -94,6 +95,13 @@ export abstract class BaseAgent<TInput, TOutput> {
         tools: params.tools,
         model: params.context.agentConfig.model,
         maxTokens: params.context.agentConfig.maxTokens ?? 4096,
+      });
+
+      // W6-09: Record LLM token metrics
+      finchLlmTokensTotal.add(response.usage.inputTokens + response.usage.outputTokens, {
+        agent_id: params.context.agentConfig.agentId,
+        model: params.context.agentConfig.model,
+        harness_id: params.context.harnessId,
       });
 
       await this.auditLog({

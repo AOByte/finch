@@ -5,6 +5,7 @@ import { RunRepository } from '../../src/persistence/run.repository';
 import { RunManagerService } from '../../src/orchestrator/run-manager.service';
 import { AuditRepository } from '../../src/audit/audit.repository';
 import { GateRepository } from '../../src/persistence/gate.repository';
+import { HarnessRepository } from '../../src/persistence/harness.repository';
 
 describe('RunsController', () => {
   let controller: RunsController;
@@ -15,17 +16,20 @@ describe('RunsController', () => {
   let runManager: { stopRun: ReturnType<typeof vi.fn> };
   let auditRepo: { findByRunId: ReturnType<typeof vi.fn> };
   let gateRepo: { findByRunId: ReturnType<typeof vi.fn> };
+  let harnessRepo: { findByName: ReturnType<typeof vi.fn> };
 
   beforeEach(() => {
     runRepo = { findById: vi.fn(), findByHarnessId: vi.fn() };
     runManager = { stopRun: vi.fn() };
     auditRepo = { findByRunId: vi.fn() };
     gateRepo = { findByRunId: vi.fn() };
+    harnessRepo = { findByName: vi.fn() };
     controller = new RunsController(
       runRepo as unknown as RunRepository,
       runManager as unknown as RunManagerService,
       auditRepo as unknown as AuditRepository,
       gateRepo as unknown as GateRepository,
+      harnessRepo as unknown as HarnessRepository,
     );
   });
 
@@ -47,7 +51,7 @@ describe('RunsController', () => {
   it('listRuns returns { data, meta } envelope', async () => {
     const runs = [{ runId: 'r1', status: 'RUNNING' }];
     runRepo.findByHarnessId.mockResolvedValue(runs);
-    const result = await controller.listRuns('h1');
+    const result = await controller.listRuns('00000000-0000-0000-0000-000000000001');
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('meta');
     expect(result.meta).toHaveProperty('total');
@@ -90,15 +94,30 @@ describe('RunsController', () => {
       { runId: 'r2', status: 'COMPLETED' },
     ];
     runRepo.findByHarnessId.mockResolvedValue(runs);
-    const result = await controller.listRuns('h1', 'RUNNING');
+    const result = await controller.listRuns('00000000-0000-0000-0000-000000000001', 'RUNNING');
     expect(result.data).toHaveLength(1);
     expect(result.data[0].status).toBe('RUNNING');
   });
 
   it('listRuns uses limit and offset params', async () => {
     runRepo.findByHarnessId.mockResolvedValue([]);
-    await controller.listRuns('h1', undefined, '5', '10');
-    expect(runRepo.findByHarnessId).toHaveBeenCalledWith('h1', { skip: 10, take: 5 });
+    await controller.listRuns('00000000-0000-0000-0000-000000000001', undefined, '5', '10');
+    expect(runRepo.findByHarnessId).toHaveBeenCalledWith('00000000-0000-0000-0000-000000000001', { skip: 10, take: 5 });
+  });
+
+  it('listRuns resolves harness name to UUID', async () => {
+    harnessRepo.findByName.mockResolvedValue({ harnessId: '00000000-0000-0000-0000-000000000001', name: 'default' });
+    runRepo.findByHarnessId.mockResolvedValue([]);
+    const result = await controller.listRuns('default');
+    expect(harnessRepo.findByName).toHaveBeenCalledWith('default');
+    expect(runRepo.findByHarnessId).toHaveBeenCalledWith('00000000-0000-0000-0000-000000000001', { skip: 0, take: 20 });
+    expect(result).toHaveProperty('data');
+  });
+
+  it('listRuns returns empty when harness name not found', async () => {
+    harnessRepo.findByName.mockResolvedValue(null);
+    const result = await controller.listRuns('nonexistent');
+    expect(result).toEqual({ data: [], meta: { total: 0, hasMore: false } });
   });
 
   it('stopRun returns { data } envelope', async () => {

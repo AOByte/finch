@@ -9,15 +9,22 @@ import {
   Body,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../persistence/prisma.service';
+import { HarnessRepository } from '../persistence/harness.repository';
 import { MemoryConnectorService } from '../memory/memory-connector.service';
 import type { MemoryType } from '@finch/types';
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
 @Controller('api/memory')
+@UseGuards(JwtAuthGuard)
 export class MemoryController {
   constructor(
     private readonly prisma: PrismaService,
+    private readonly harnessRepository: HarnessRepository,
     private readonly memoryConnector: MemoryConnectorService,
   ) {}
 
@@ -33,11 +40,21 @@ export class MemoryController {
       throw new BadRequestException('harnessId query parameter is required');
     }
 
+    // Resolve harness name to UUID when a non-UUID value is passed
+    let resolvedHarnessId = harnessId;
+    if (!UUID_RE.test(harnessId)) {
+      const harness = await this.harnessRepository.findByName(harnessId);
+      if (!harness) {
+        return { data: [], meta: { total: 0, hasMore: false } };
+      }
+      resolvedHarnessId = harness.harnessId;
+    }
+
     // If a semantic query is provided, use the embedding-based search
     if (q) {
       const types = type ? [type as MemoryType] : undefined;
       const hits = await this.memoryConnector.query({
-        harnessId,
+        harnessId: resolvedHarnessId,
         query: q,
         limit: limit ? parseInt(limit, 10) : 10,
         types,
@@ -50,13 +67,13 @@ export class MemoryController {
 
     // Otherwise, do a regular paginated list
     const take = limit ? parseInt(limit, 10) : 20;
-    const where: Record<string, unknown> = { harnessId };
+    const where: Record<string, unknown> = { harnessId: resolvedHarnessId };
     if (type) {
       where['type'] = type;
     }
 
     // Build parameterized query — LIMIT is passed as a parameter, not interpolated
-    const params: unknown[] = [harnessId];
+    const params: unknown[] = [resolvedHarnessId];
     let paramIdx = 2;
     let sql: string;
 

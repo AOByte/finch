@@ -5,12 +5,15 @@ import {
   Body,
   HttpCode,
   HttpStatus,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { WorkflowClient } from '@temporalio/client';
 import { GateControllerService } from '../orchestrator/gate-controller.service';
 import { GateRepository } from '../persistence/gate.repository';
 
 @Controller('api/gate')
+@UseGuards(JwtAuthGuard)
 export class GateController {
   constructor(
     private readonly gateControllerService: GateControllerService,

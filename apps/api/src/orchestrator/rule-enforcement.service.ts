@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { LLMRegistryService } from '../llm/llm-registry.service';
 import type { RuleRef, RuleCheckResult } from '@finch/types';
+import { finchRuleViolationsTotal } from '../telemetry';
 
 @Injectable()
 export class RuleEnforcementService {
@@ -16,6 +17,11 @@ export class RuleEnforcementService {
     for (const rule of hardRules) {
       const violated = await this.evaluateRule(rule, currentArtifact);
       if (violated) {
+        finchRuleViolationsTotal.add(1, {
+          rule_type: rule.patternType,
+          enforcement: 'hard',
+          harness_id: 'unknown',
+        });
         return {
           violated: true,
           rule,
@@ -36,6 +42,11 @@ export class RuleEnforcementService {
     for (const rule of softRules) {
       const violated = await this.evaluateRule(rule, currentArtifact);
       if (violated) {
+        finchRuleViolationsTotal.add(1, {
+          rule_type: rule.patternType,
+          enforcement: 'soft',
+          harness_id: 'unknown',
+        });
         deviations.push({ rule, reason: `Soft rule deviation: ${rule.constraint}` });
       }
     }

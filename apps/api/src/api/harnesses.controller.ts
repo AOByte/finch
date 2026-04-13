@@ -7,11 +7,14 @@ import {
   Body,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { HarnessRepository } from '../persistence/harness.repository';
 import { Prisma } from '@prisma/client';
 
 @Controller('api/harnesses')
+@UseGuards(JwtAuthGuard)
 export class HarnessesController {
   constructor(private readonly harnessRepository: HarnessRepository) {}
 

@@ -9,10 +9,13 @@ import {
   Body,
   NotFoundException,
   BadRequestException,
+  UseGuards,
 } from '@nestjs/common';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { PrismaService } from '../persistence/prisma.service';
 
 @Controller('api/rules')
+@UseGuards(JwtAuthGuard)
 export class RulesController {
   constructor(private readonly prisma: PrismaService) {}
 
