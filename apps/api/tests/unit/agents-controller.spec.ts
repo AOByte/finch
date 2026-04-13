@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { NotFoundException } from '@nestjs/common';
 import { AgentsController } from '../../src/api/agents.controller';
 import { PrismaService } from '../../src/persistence/prisma.service';
+import { HarnessRepository } from '../../src/persistence/harness.repository';
 
 describe('AgentsController', () => {
   let controller: AgentsController;
@@ -14,6 +15,8 @@ describe('AgentsController', () => {
       delete: ReturnType<typeof vi.fn>;
     };
   };
+  let harnessRepo: { findByName: ReturnType<typeof vi.fn> };
+  const H1 = '00000000-0000-0000-0000-000000000001';
 
   beforeEach(() => {
     prisma = {
@@ -25,13 +28,17 @@ describe('AgentsController', () => {
         delete: vi.fn(),
       },
     };
-    controller = new AgentsController(prisma as unknown as PrismaService);
+    harnessRepo = { findByName: vi.fn() };
+    controller = new AgentsController(
+      prisma as unknown as PrismaService,
+      harnessRepo as unknown as HarnessRepository,
+    );
   });
 
   it('list returns { data, meta } envelope', async () => {
     const configs = [{ agentConfigId: 'a1' }];
     prisma.agentConfig.findMany.mockResolvedValue(configs);
-    const result = await controller.list('h1');
+    const result = await controller.list(H1);
     expect(result).toEqual({ data: configs, meta: { total: 1 } });
   });
 
@@ -97,9 +104,9 @@ describe('AgentsController', () => {
 
   it('list filters by phase when provided', async () => {
     prisma.agentConfig.findMany.mockResolvedValue([]);
-    await controller.list('h1', 'ACQUIRE');
+    await controller.list(H1, 'ACQUIRE');
     expect(prisma.agentConfig.findMany).toHaveBeenCalledWith(expect.objectContaining({
-      where: { harnessId: 'h1', phase: 'ACQUIRE' },
+      where: { harnessId: H1, phase: 'ACQUIRE' },
     }));
   });
 });

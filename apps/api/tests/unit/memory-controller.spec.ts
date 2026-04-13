@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { MemoryController } from '../../src/api/memory.controller';
 import { PrismaService } from '../../src/persistence/prisma.service';
+import { HarnessRepository } from '../../src/persistence/harness.repository';
 import { MemoryConnectorService } from '../../src/memory/memory-connector.service';
 
 describe('MemoryController', () => {
@@ -14,6 +15,8 @@ describe('MemoryController', () => {
     query: ReturnType<typeof vi.fn>;
     writeToStaging: ReturnType<typeof vi.fn>;
   };
+  let harnessRepo: { findByName: ReturnType<typeof vi.fn> };
+  const H1 = '00000000-0000-0000-0000-000000000001';
 
   beforeEach(() => {
     prisma = { $queryRawUnsafe: vi.fn(), $executeRawUnsafe: vi.fn() };
@@ -21,26 +24,28 @@ describe('MemoryController', () => {
       query: vi.fn().mockResolvedValue([]),
       writeToStaging: vi.fn().mockResolvedValue(undefined),
     };
+    harnessRepo = { findByName: vi.fn() };
     controller = new MemoryController(
       prisma as unknown as PrismaService,
+      harnessRepo as unknown as HarnessRepository,
       memoryConnector as unknown as MemoryConnectorService,
     );
   });
 
   it('list returns { data, meta } envelope', async () => {
     prisma.$queryRawUnsafe.mockResolvedValue([]);
-    const result = await controller.list('h1');
+    const result = await controller.list(H1);
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('meta');
   });
 
   it('list with q param uses semantic search', async () => {
     memoryConnector.query.mockResolvedValue([{ memoryId: 'm1', score: 0.9 }]);
-    const result = await controller.list('h1', 'search query');
+    const result = await controller.list(H1, 'search query');
     expect(result).toHaveProperty('data');
     expect(result).toHaveProperty('meta');
     expect(memoryConnector.query).toHaveBeenCalledWith(
-      expect.objectContaining({ harnessId: 'h1', query: 'search query' }),
+      expect.objectContaining({ harnessId: H1, query: 'search query' }),
     );
   });
 
@@ -50,7 +55,7 @@ describe('MemoryController', () => {
 
   it('create returns { data } envelope', async () => {
     const result = await controller.create({
-      harnessId: 'h1',
+      harnessId: H1,
       type: 'TaskPattern',
       content: 'test content',
     });
@@ -90,25 +95,25 @@ describe('MemoryController', () => {
 
   it('list with type filter passes type to query', async () => {
     prisma.$queryRawUnsafe.mockResolvedValue([]);
-    const result = await controller.list('h1', undefined, 'TaskPattern');
+    const result = await controller.list(H1, undefined, 'TaskPattern');
     expect(result.data).toEqual([]);
   });
 
   it('list with cursor uses cursor-based pagination', async () => {
     prisma.$queryRawUnsafe.mockResolvedValue([]);
-    const result = await controller.list('h1', undefined, undefined, undefined, 'cursor-id');
+    const result = await controller.list(H1, undefined, undefined, undefined, 'cursor-id');
     expect(result.data).toEqual([]);
   });
 
   it('list with cursor and type filter', async () => {
     prisma.$queryRawUnsafe.mockResolvedValue([]);
-    const result = await controller.list('h1', undefined, 'TaskPattern', undefined, 'cursor-id');
+    const result = await controller.list(H1, undefined, 'TaskPattern', undefined, 'cursor-id');
     expect(result.data).toEqual([]);
   });
 
   it('list with q and type uses semantic search with types', async () => {
     memoryConnector.query.mockResolvedValue([]);
-    const result = await controller.list('h1', 'search', 'TaskPattern');
+    const result = await controller.list(H1, 'search', 'TaskPattern');
     expect(memoryConnector.query).toHaveBeenCalledWith(
       expect.objectContaining({ types: ['TaskPattern'] }),
     );
@@ -116,7 +121,7 @@ describe('MemoryController', () => {
 
   it('list with q and custom limit', async () => {
     memoryConnector.query.mockResolvedValue([]);
-    await controller.list('h1', 'search', undefined, '5');
+    await controller.list(H1, 'search', undefined, '5');
     expect(memoryConnector.query).toHaveBeenCalledWith(
       expect.objectContaining({ limit: 5 }),
     );
@@ -139,7 +144,7 @@ describe('MemoryController', () => {
   it('list paginated returns mapped data with nextCursor', async () => {
     const records = Array.from({ length: 20 }, (_, i) => ({
       memory_id: `m${i}`,
-      harness_id: 'h1',
+      harness_id: H1,
       type: 'TaskPattern',
       content: `content-${i}`,
       relevance_tags: [],
@@ -149,7 +154,7 @@ describe('MemoryController', () => {
       updated_at: new Date(),
     }));
     prisma.$queryRawUnsafe.mockResolvedValue(records);
-    const result = await controller.list('h1');
+    const result = await controller.list(H1);
     expect(result.data).toHaveLength(20);
     expect(result.meta.hasMore).toBe(true);
     expect(result.meta.nextCursor).toBe('m19');
