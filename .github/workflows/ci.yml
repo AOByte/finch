@@ -175,8 +175,10 @@ jobs:
             echo "Attempt $i: Temporal not ready yet, waiting 5s..."
             sleep 5
           done
+      - name: Build API server
+        run: pnpm --filter api build
       - name: Start API server
-        run: pnpm --filter api dev &
+        run: node apps/api/dist/main.js &
         env:
           DATABASE_URL: postgresql://finch:finch@localhost:5432/finch
           REDIS_URL: redis://localhost:6379
@@ -205,6 +207,10 @@ jobs:
             if curl -sf http://localhost:3000 > /dev/null 2>&1; then
               echo "Frontend is up!"
               break
+            fi
+            if [ $i -eq 30 ]; then
+              echo "Frontend failed to start within timeout"
+              exit 1
             fi
             sleep 2
           done
